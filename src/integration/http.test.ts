@@ -4,8 +4,25 @@
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import type { Subprocess } from "bun";
+import net from "node:net";
 
-const BASE_URL = "http://localhost:47778";
+// Own server on a free port, never "use the one already on 47778": on a machine running the live
+// server that sent this whole suite to production (2026-09-11). Same pattern as
+// zero-config-start.test.ts; HOME/ORACLE_* come from the hermetic test preload.
+let BASE_URL = "";
+
+async function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close(() => resolve(port));
+    });
+  });
+}
 let serverProcess: Subprocess | null = null;
 
 async function waitForServer(maxAttempts = 30): Promise<boolean> {
@@ -21,30 +38,16 @@ async function waitForServer(maxAttempts = 30): Promise<boolean> {
   return false;
 }
 
-async function isServerRunning(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE_URL}/api/health`);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 describe("HTTP API Integration", () => {
   beforeAll(async () => {
-    // Check if server already running
-    if (await isServerRunning()) {
-      console.log("Using existing server");
-      return;
-    }
-
-    // Start server
-    console.log("Starting server...");
+    const port = await getFreePort();
+    BASE_URL = `http://127.0.0.1:${port}`;
+    console.log(`Starting server on ${port}...`);
     serverProcess = Bun.spawn(["bun", "run", "src/server.ts"], {
       cwd: import.meta.dir.replace("/src/integration", ""),
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, ORACLE_CHROMA_TIMEOUT: "3000" },
+      env: { ...process.env, ORACLE_PORT: String(port), ORACLE_CHROMA_TIMEOUT: "3000" },
     });
 
     const ready = await waitForServer();
