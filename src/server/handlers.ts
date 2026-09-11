@@ -779,7 +779,7 @@ export function handleLearn(
 
   const slug = slugifyPattern(pattern);
 
-  // On slug collision (same date + same first-50-char prefix), append -2, -3, …
+  // On slug collision (same date + same word-bounded slug prefix), append -2, -3, …
   // until unique. Prevents 500s when two writes share a slug within one day
   // (e.g. repeated hot-write snapshots from the same agent).
   const subdir = 'ψ/memory/learnings';
