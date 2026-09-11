@@ -42,6 +42,34 @@
  */
 export const SLUG_MAX_BYTES = 120;
 
+const WORD_CHAR = /[\p{L}\p{N}\p{M}]/u;
+const NON_ASCII = /[^\x00-\x7F]/;
+const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
+
+/**
+ * The input window, backed off to the last word boundary when it would cut a non-ASCII title in
+ * the middle of a word. Fork carry patch (2026-09-11; upstream discussion #3050): the plain cut
+ * ended 440 of 520 truncated learnings mid-word, and a Thai word cut short usually spells a
+ * different word. ASCII-only windows return the plain cut, so ASCII output is byte-identical
+ * (tests/util/slug-ascii-identity.test.ts). Boundaries come from Intl.Segmenter over the whole
+ * value, so a Thai run without spaces is still cut between words.
+ */
+function windowAtWordBoundary(value: string, maxInputChars: number): string {
+  const cut = value.substring(0, maxInputChars);
+  if (value.length <= maxInputChars || !NON_ASCII.test(cut)) return cut;
+  const last = cut.charAt(cut.length - 1);
+  const next = value.charAt(maxInputChars);
+  if (!WORD_CHAR.test(last) || !WORD_CHAR.test(next)) return cut; // already between words
+  let boundary = 0;
+  let at = 0;
+  for (const { segment } of wordSegmenter.segment(value)) {
+    at += segment.length;
+    if (at > maxInputChars) break;
+    boundary = at;
+  }
+  return boundary > 0 ? value.substring(0, boundary) : cut;
+}
+
 /** Title style: punctuation is deleted, whitespace is the separator. `a.b` -> `ab`. */
 const NOT_SLUGGABLE_KEEPING_SPACE = /[^\p{L}\p{N}\p{M}\s-]/gu;
 
@@ -84,7 +112,27 @@ function clampToBytes(value: string, maxBytes: number): string {
  */
 function tidy(slug: string): string {
   const clamped = clampToBytes(slug, SLUG_MAX_BYTES);
-  return clamped === slug ? slug : clamped.replace(/-$/, '');
+  return clamped === slug ? slug : backOffToWord(clamped, slug).replace(/-$/, '');
+}
+
+/**
+ * Fork carry patch (2026-09-11; #3050): the byte clamp above is what cuts a long Thai title
+ * (120 bytes is ~40 Thai characters, well inside the 50-char window), and it cut mid-word:
+ * `...มองไม่เห็น` -> `...มอ`. When the clamp lands inside a word, fall back to the last
+ * Intl.Segmenter boundary. The clamp never fires on ASCII (see SLUG_MAX_BYTES), so ASCII
+ * output is unchanged.
+ */
+function backOffToWord(clamped: string, full: string): string {
+  const next = full.charAt(clamped.length);
+  if (!WORD_CHAR.test(clamped.charAt(clamped.length - 1)) || !WORD_CHAR.test(next)) return clamped;
+  let boundary = 0;
+  let at = 0;
+  for (const { segment } of wordSegmenter.segment(full)) {
+    at += segment.length;
+    if (at > clamped.length) break;
+    boundary = at;
+  }
+  return boundary > 0 ? full.substring(0, boundary) : clamped;
 }
 
 /**
@@ -96,8 +144,7 @@ function tidy(slug: string): string {
  */
 export function slugifyTitle(value: string, maxInputChars: number): string {
   return tidy(
-    value
-      .substring(0, maxInputChars)
+    windowAtWordBoundary(value, maxInputChars)
       .toLowerCase()
       .replace(NOT_SLUGGABLE_KEEPING_SPACE, '')
       .replace(/\s+/g, '-')
@@ -115,8 +162,7 @@ export function slugifyTitle(value: string, maxInputChars: number): string {
  */
 export function slugifySnippet(value: string, maxInputChars: number): string {
   return tidy(
-    value
-      .slice(0, maxInputChars)
+    windowAtWordBoundary(value, maxInputChars)
       .toLowerCase()
       .replace(NOT_SLUGGABLE, '-')
       .replace(/^-|-$/g, ''),
