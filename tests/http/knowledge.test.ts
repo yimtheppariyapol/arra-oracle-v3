@@ -1,13 +1,14 @@
 /**
  * HTTP Contract Tests — search, knowledge (learn/handoff/inbox), supersede.
  * Covers src/routes/{search,knowledge,supersede}.ts. Seeds via POST /api/learn,
- * reuses an already-running server on BASE_URL or spawns src/server.ts.
+ * always spawns its own src/server.ts on a free port (never reuses one already running).
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import type { Subprocess } from "bun";
 import path from "path";
+import { getFreePort } from "../_free-port.ts";
 
-const BASE_URL = "http://localhost:47778";
+let BASE_URL = ""; // set in beforeAll: own server on a free port, never the live one
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const SEED_TAG = `yellow-http-test-${Date.now()}`;
 let serverProcess: Subprocess | null = null;
@@ -32,11 +33,12 @@ async function seedLearn(pattern: string, concepts: string[] = []) {
 
 describe("HTTP Contract — search / knowledge / supersede", () => {
   beforeAll(async () => {
-    if (await isUp()) return;
+    const port = await getFreePort();
+    BASE_URL = `http://127.0.0.1:${port}`;
     serverProcess = Bun.spawn(["bun", "run", "src/server.ts"], {
       cwd: path.resolve(import.meta.dir, "../.."),
       stdout: "pipe", stderr: "pipe",
-      env: { ...process.env, ORACLE_CHROMA_TIMEOUT: "3000" },
+      env: { ...process.env, ORACLE_PORT: String(port), ORACLE_CHROMA_TIMEOUT: "3000" },
     });
     if (!(await waitUp())) throw new Error("Server failed to start within 15s");
   }, 30_000);

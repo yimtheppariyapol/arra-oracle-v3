@@ -16,11 +16,17 @@ let pluginsOnly: any;
 
 beforeAll(async () => {
   tmp = mkdtempSync(join(realOs.tmpdir(), 'blue-http-'));
-  writeFileSync(join(tmp, 'hello.txt'), 'hello from repo root');
+  // REPO_ROOT and PLUGINS_DIR come from config.ts, which the hermetic test preload
+  // (src/test-setup/hermetic.ts) has already frozen to a throwaway root before this file runs,
+  // so setting ORACLE_DATA_DIR / ORACLE_REPO_ROOT here would be ignored. Write the fixtures where
+  // the frozen config points instead.
+  const cfg = await import('../../src/config.ts');
+  mkdirSync(cfg.REPO_ROOT, { recursive: true });
+  writeFileSync(join(cfg.REPO_ROOT, 'hello.txt'), 'hello from repo root');
 
   // files.ts PLUGINS_DIR = ORACLE_DATA_DIR/plugins (flat .wasm only).
-  mkdirSync(join(tmp, 'plugins'), { recursive: true });
-  writeFileSync(join(tmp, 'plugins', 'alpha.wasm'), WASM_HEADER);
+  mkdirSync(cfg.PLUGINS_DIR, { recursive: true });
+  writeFileSync(join(cfg.PLUGINS_DIR, 'alpha.wasm'), WASM_HEADER);
 
   // plugins.ts captures PLUGIN_DIR at module load via os.homedir(), which
   // bypasses the HOME env var — mock os before dynamic import.
@@ -49,10 +55,7 @@ beforeAll(async () => {
   );
   writeFileSync(join(nested, 'nested-plugin.wasm'), WASM_HEADER);
 
-  // Isolate the server from user state BEFORE dynamic imports run config.ts.
-  process.env.ORACLE_DATA_DIR = tmp;
-  process.env.HOME = tmp;
-  process.env.ORACLE_REPO_ROOT = tmp;
+  // User state isolation (HOME, ORACLE_*) comes from the hermetic preload.
   process.env.GHQ_ROOT = join(tmp, 'ghq-fake');
   mkdirSync(process.env.GHQ_ROOT, { recursive: true });
 

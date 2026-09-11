@@ -11,8 +11,9 @@
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import type { Subprocess } from "bun";
+import { getFreePort } from "../_free-port.ts";
 
-const BASE_URL = "http://localhost:47778";
+let BASE_URL = ""; // set in beforeAll: own server on a free port, never the live one
 let serverProcess: Subprocess | null = null;
 
 async function waitForServer(maxAttempts = 30): Promise<boolean> {
@@ -26,27 +27,16 @@ async function waitForServer(maxAttempts = 30): Promise<boolean> {
   return false;
 }
 
-async function isServerRunning(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE_URL}/api/health`);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 describe("HTTP Contract — Core Routes", () => {
   beforeAll(async () => {
-    if (await isServerRunning()) {
-      console.log("Using existing server");
-      return;
-    }
-    console.log("Starting server...");
+    const port = await getFreePort();
+    BASE_URL = `http://127.0.0.1:${port}`;
+    console.log(`Starting server on ${port}...`);
     serverProcess = Bun.spawn(["bun", "run", "src/server.ts"], {
       cwd: import.meta.dir.replace("/tests/http", ""),
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, ORACLE_CHROMA_TIMEOUT: "3000" },
+      env: { ...process.env, ORACLE_PORT: String(port), ORACLE_CHROMA_TIMEOUT: "3000" },
     });
     const ready = await waitForServer();
     if (!ready) {
