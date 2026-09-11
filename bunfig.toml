@@ -6,4 +6,9 @@
 roots = ["src", "tests"]
 # Isolate test files to prevent cross-file DB lock contamination.
 # Without this, parallel test files sharing oracle.db cause "disk I/O error".
+# ⚠ It does NOT give each file its own module registry on bun 1.3.11 — config.ts frozen by one
+#   file is seen by the next. That is why the preload below exists.
 isolate = true
+# Point HOME and every ORACLE_* path at a throwaway root before any test imports config.ts, and
+# refuse to run if anything still resolves outside it. See src/test-setup/hermetic.ts.
+preload = ["./src/test-setup/hermetic.ts"]
