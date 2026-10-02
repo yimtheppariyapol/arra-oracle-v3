@@ -2,6 +2,7 @@
  * Document storage: SQLite + vector store batching
  */
 
+import { ftsValues } from '../search/fts-write.ts';
 import { Database, type Changes } from 'bun:sqlite';
 import { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 import { sql } from 'drizzle-orm';
@@ -93,11 +94,9 @@ export async function storeDocuments(
       for (const rowid of ftsRowids.get(doc.id) ?? []) {
         tx.run(sql`DELETE FROM oracle_fts WHERE rowid = ${rowid}`);
       }
-      const inserted = tx.insert(oracleFts).values({
-        id: doc.id,
-        content: indexedContent,
-        concepts: doc.concepts.join(' '),
-      }).run();
+      const inserted = tx.insert(oracleFts).values(ftsValues(
+        tx, doc.id, doc.content, doc.concepts.join(' '), indexedContent,
+      )).run();
       // Drizzle types run() as void; its Bun adapter returns Statement.run()'s Changes.
       ftsRowids.set(doc.id, [(inserted as unknown as Changes).lastInsertRowid]);
       replaceEntityLinks(sqlite, {
@@ -117,7 +116,7 @@ export async function storeDocuments(
 
       // Vector store metadata (must be primitives, not arrays)
       ids.push(doc.id);
-      contents.push(indexedContent);
+      contents.push(doc.content);
       metadatas.push({
         type: doc.type,
         tenant_id: tenantId,
