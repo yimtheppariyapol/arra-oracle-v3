@@ -204,7 +204,9 @@ function assertRouteModule(mod: unknown, index: number): asserts mod is RouteMod
 
 export async function startServer(options: StartServerOptions = {}): Promise<ReturnType<typeof Bun.serve>> {
   const app = await createStartedApp(options);
-  return Bun.serve(app);
+  // Bind loopback by default: the API has no auth, and binding every interface exposed the vault
+  // to anyone on the same Wi-Fi (measured 2026-10-28). Set ORACLE_HOST=0.0.0.0 to opt back in.
+  return Bun.serve({ ...app, hostname: process.env.ORACLE_HOST || '127.0.0.1' });
 }
 
 export async function createStartedApp(options: StartServerOptions = {}): Promise<ServerSpec> {
