@@ -20,11 +20,31 @@ function skippableFsError(err: unknown): boolean {
   return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES' || code === 'EPERM';
 }
 
+const MARKDOWN_SKIP_DIRS = ['.git', 'node_modules'];
+
+function isLoopFsError(err: unknown): boolean {
+  const code = err && typeof err === 'object' && 'code' in err
+    ? (err as NodeJS.ErrnoException).code
+    : undefined;
+  return code === 'ELOOP' || code === 'ENAMETOOLONG';
+}
+
 /**
  * Recursively get all markdown files in a directory
  */
-export function getAllMarkdownFiles(dir: string): string[] {
+export function getAllMarkdownFiles(dir: string, visited: Set<string> = new Set()): string[] {
   const files: string[] = [];
+  // Symlinks are followed, so guard against cycles by real path: without this a
+  // looping link is re-walked until the path length limit and memory blows up.
+  let realDir: string;
+  try {
+    realDir = fs.realpathSync(dir);
+  } catch (err) {
+    if (skippableFsError(err) || isLoopFsError(err)) return files;
+    throw err;
+  }
+  if (visited.has(realDir)) return files;
+  visited.add(realDir);
   let items: string[];
   try {
     items = fs.readdirSync(dir);
@@ -33,16 +53,19 @@ export function getAllMarkdownFiles(dir: string): string[] {
     throw err;
   }
   for (const item of items) {
+    if (MARKDOWN_SKIP_DIRS.includes(item)) continue;
     const fullPath = path.join(dir, item);
     let stat: fs.Stats;
     try {
       stat = fs.statSync(fullPath);
     } catch (err) {
-      if (skippableFsError(err)) continue;
+      if (skippableFsError(err) || isLoopFsError(err)) continue;
       throw err;
     }
     if (stat.isDirectory()) {
-      files.push(...getAllMarkdownFiles(fullPath));
+      // /learn links the studied repo in as `origin`; that is source, not knowledge.
+      if (item === 'origin' && fs.lstatSync(fullPath).isSymbolicLink()) continue;
+      files.push(...getAllMarkdownFiles(fullPath, visited));
     } else if (item.endsWith('.md')) {
       files.push(fullPath);
     }

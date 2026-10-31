@@ -72,6 +72,51 @@ export function replaceDocumentPointers(dbInput: OracleDbInput, input: PointerIn
   }
 }
 
+/**
+ * Same result as calling replaceDocumentPointers for each input in order, but the pointer
+ * table is read once and each pointer row written once. Per-document calls re-read and
+ * re-parse the whole table (100MB+ of doc-id JSON on a 50k-doc vault) for every document.
+ */
+export function replaceDocumentPointersBatch(dbInput: OracleDbInput, inputs: PointerInput[]): void {
+  if (inputs.length === 0) return;
+  try {
+    const db = toDb(dbInput);
+    const latest = new Map<string, PointerInput>();
+    for (const input of inputs) latest.set(input.documentId, input);
+    const byTenant = new Map<string, PointerInput[]>();
+    for (const input of latest.values()) {
+      const tenantId = input.tenantId?.trim() || 'default';
+      byTenant.set(tenantId, [...(byTenant.get(tenantId) ?? []), input]);
+    }
+    const now = Date.now();
+    for (const [tenantId, group] of byTenant) {
+      removeDocumentPointers(db, tenantId, group.map((input) => input.documentId));
+      const additions = new Map<string, { item: Pointer; docIds: Set<string> }>();
+      for (const input of group) {
+        for (const item of documentPointers(input)) {
+          const id = pointerId(tenantId, item.kind, item.key);
+          const entry = additions.get(id) ?? { item, docIds: new Set<string>() };
+          entry.docIds.add(input.documentId);
+          additions.set(id, entry);
+        }
+      }
+      for (const [id, { item, docIds: added }] of additions) {
+        const existingRow = db.select({ docIds: schema.oraclePointerIndex.docIds })
+          .from(schema.oraclePointerIndex)
+          .where(eq(schema.oraclePointerIndex.id, id))
+          .get();
+        const docIds = JSON.stringify([...new Set([...parseIds(existingRow?.docIds), ...added])].sort());
+        db.insert(schema.oraclePointerIndex)
+          .values({ id, tenantId, kind: item.kind, key: item.key, docIds, updatedAt: now })
+          .onConflictDoUpdate({ target: schema.oraclePointerIndex.id, set: { docIds, updatedAt: now } })
+          .run();
+      }
+    }
+  } catch (error) {
+    if (!missingPointerTable(error)) throw error;
+  }
+}
+
 export function removeDocumentPointers(dbInput: OracleDbInput, tenantId: string | undefined, documentIds: string[]): void {
   if (documentIds.length === 0) return;
   try {

@@ -4,7 +4,6 @@
 
 import { Database } from 'bun:sqlite';
 import { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
-import { eq } from 'drizzle-orm';
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import * as schema from '../db/schema.ts';
 import { oracleDocuments } from '../db/schema.ts';
@@ -12,7 +11,7 @@ import { enrichTextWithAcronyms } from '../search/acronyms.ts';
 import { tenantIdForWrite } from '../middleware/tenant.ts';
 import { replaceEntityLinks } from '../search/entity-ranking.ts';
 import { chunkDocumentsForIndexing } from './chunker.ts';
-import { replaceDocumentPointers } from '../search/pointer-index.ts';
+import { replaceDocumentPointersBatch, type PointerInput } from '../search/pointer-index.ts';
 import type { VectorStoreAdapter } from '../vector/types.ts';
 import type { OracleDocument } from '../types.ts';
 
@@ -42,6 +41,20 @@ export async function storeDocuments(
   const ids: string[] = [];
   const contents: string[] = [];
   const metadatas: any[] = [];
+
+  // FTS5 `id` is UNINDEXED, so `DELETE ... WHERE id = ?` scans the whole table: once per
+  // chunk that was ~0.13s × 131k chunks (hours). Map id → rowids in one pass, delete by rowid.
+  const wanted = new Set(storedDocuments.map((doc) => doc.id));
+  const ftsRowids = new Map<string, number[]>();
+  for (const row of sqlite.prepare('SELECT rowid, id FROM oracle_fts').all() as { rowid: number; id: string }[]) {
+    if (!wanted.has(row.id)) continue;
+    const list = ftsRowids.get(row.id);
+    if (list) list.push(row.rowid);
+    else ftsRowids.set(row.id, [row.rowid]);
+  }
+  const deleteFtsRow = sqlite.prepare('DELETE FROM oracle_fts WHERE rowid = ?');
+  const insertFtsRow = sqlite.prepare('INSERT INTO oracle_fts (id, content, concepts) VALUES (?, ?, ?)');
+  const pointerInputs: PointerInput[] = [];
 
   db.transaction((tx) => {
     for (const doc of storedDocuments) {
@@ -83,12 +96,9 @@ export async function storeDocuments(
 
       // FTS5 virtual tables have no UNIQUE constraint on id (it's UNINDEXED),
       // so delete-then-insert avoids duplicates across re-index runs.
-      tx.delete(oracleFts).where(eq(oracleFts.id, doc.id)).run();
-      tx.insert(oracleFts).values({
-        id: doc.id,
-        content: indexedContent,
-        concepts: doc.concepts.join(' '),
-      }).run();
+      for (const rowid of ftsRowids.get(doc.id) ?? []) deleteFtsRow.run(rowid);
+      const inserted = insertFtsRow.run(doc.id, indexedContent, doc.concepts.join(' '));
+      ftsRowids.set(doc.id, [Number(inserted.lastInsertRowid)]);
       replaceEntityLinks(sqlite, {
         documentId: doc.id,
         tenantId,
@@ -96,7 +106,7 @@ export async function storeDocuments(
         concepts: doc.concepts,
         now,
       });
-      replaceDocumentPointers(sqlite, {
+      pointerInputs.push({
         documentId: doc.id,
         tenantId,
         content: indexedContent,
@@ -117,6 +127,7 @@ export async function storeDocuments(
         ...(doc.line_end !== undefined && { line_end: doc.line_end }),
       });
     }
+    replaceDocumentPointersBatch(sqlite, pointerInputs);
   });
 
   // Batch insert to vector store in chunks of 100 (skip if no client)

@@ -17,20 +17,22 @@ const REINDEX_REASON = 'superseded by indexer reindex';
 
 export function snapshotActiveIndexerDocs(input: OracleDbInput, tenantId?: string): DocSnapshot {
   const db = asOracleDb(input);
-  const rows = db.select({
-    id: oracleDocuments.id,
-    sourceFile: oracleDocuments.sourceFile,
-    content: sql<string | null>`(
-      SELECT GROUP_CONCAT(${oracleFts.content}, '\n')
-      FROM ${oracleFts}
-      WHERE ${oracleFts.id} = ${oracleDocuments.id}
-    )`,
-  })
+  const rows = db.select({ id: oracleDocuments.id, sourceFile: oracleDocuments.sourceFile })
     .from(oracleDocuments)
     .where(activeIndexerWhere(tenantId))
     .all();
+  const snapshot: DocSnapshot = new Map(rows.map((row) => [row.id, { sourceFile: row.sourceFile, content: null }]));
 
-  return new Map(rows.map((row) => [row.id, { sourceFile: row.sourceFile, content: row.content }]));
+  // One pass over the FTS table, joined in memory. A correlated subquery here rendered as
+  // `WHERE "id" = "id"` (drizzle drops the table prefix), so every document concatenated the
+  // whole FTS table — terabytes of swap on a 50k-doc vault. `id` is UNINDEXED in fts5, so a
+  // correctly-qualified subquery would still scan the table once per document.
+  for (const row of db.select({ id: oracleFts.id, content: oracleFts.content }).from(oracleFts).all()) {
+    const entry = row.id === null ? undefined : snapshot.get(row.id);
+    if (!entry) continue;
+    entry.content = entry.content === null ? row.content : `${entry.content}\n${row.content}`;
+  }
+  return snapshot;
 }
 
 export function changedDocumentIds(before: DocSnapshot, documents: OracleDocument[]): Set<string> {
