@@ -147,20 +147,17 @@ describe('SqliteVecAdapter unit behavior without sqlite-vec extension', () => {
     expect(await adapter.getAllEmbeddings()).toEqual({ ids: [], embeddings: [], metadatas: [] });
   });
 
-  test('queryByVector searches raw vectors with sqlite L2 distance', async () => {
+  test('queryByVector searches raw vectors with exact sqlite-vec L2 KNN', async () => {
     const adapter = new SqliteVecAdapter('unit_sqlite', '/tmp/unit-sqlite.db', embedder) as any;
     adapter.db = {
       select(selection: Record<string, unknown>) {
         expect(Object.keys(selection)).toEqual(['id', 'distance', 'document', 'metadata']);
-        return { from: () => ({ innerJoin: () => ({ orderBy: () => ({
-          limit(value: number) {
-            expect(value).toBe(2);
-            return { all: () => [
-              { id: 'doc-a', distance: 0.12, document: 'alpha', metadata: '{"type":"learning"}' },
-              { id: 'doc-b', distance: 0.34, document: 'beta', metadata: '{"type":"pattern"}' },
-            ] };
-          },
-        }) }) }) };
+        return { from: () => ({ innerJoin: () => ({ where: () => ({ orderBy: () => ({
+          all: () => [
+            { id: 'doc-a', distance: 0.12, document: 'alpha', metadata: '{"type":"learning"}' },
+            { id: 'doc-b', distance: 0.34, document: 'beta', metadata: '{"type":"pattern"}' },
+          ],
+        }) }) }) }) };
       },
     };
 

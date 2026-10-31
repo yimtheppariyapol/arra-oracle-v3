@@ -137,19 +137,23 @@ export function recordEmbedderRuntimeFailure(selection: EmbeddingProviderSelecti
 }
 
 export function observeEmbeddingProvider(provider: EmbeddingProvider, selection: EmbeddingProviderSelection): EmbeddingProvider {
+  const observe = async (call: () => Promise<number[][]>) => {
+    try {
+      const vectors = await call();
+      recordEmbedderRuntimeSuccess(selection);
+      return vectors;
+    } catch (error) {
+      recordEmbedderRuntimeFailure(selection, error);
+      throw error;
+    }
+  };
   return {
     get name() { return provider.name; },
     get dimensions() { return provider.dimensions; },
-    async embed(texts, type) {
-      try {
-        const vectors = await provider.embed(texts, type);
-        recordEmbedderRuntimeSuccess(selection);
-        return vectors;
-      } catch (error) {
-        recordEmbedderRuntimeFailure(selection, error);
-        throw error;
-      }
-    },
+    prepareText: provider.prepareText?.bind(provider),
+    getIdentity: provider.getIdentity?.bind(provider),
+    embedPassageBatch: provider.embedPassageBatch ? (texts) => observe(() => provider.embedPassageBatch!(texts)) : undefined,
+    embed: (texts, type) => observe(() => provider.embed(texts, type)),
   };
 }
 

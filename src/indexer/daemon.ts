@@ -14,12 +14,14 @@
  */
 
 import { Elysia } from 'elysia';
-import { eq } from 'drizzle-orm';
-import { DB_PATH, REPO_ROOT } from '../config.ts';
-import { createDatabase, oracleFts } from '../db/index.ts';
+import { DB_PATH, REPO_ROOT, ORACLE_DATA_DIR } from '../config.ts';
+import { createDatabase } from '../db/index.ts';
 import { createVectorStoreForModel, getEmbeddingModels } from '../vector/factory.ts';
 import { runWorker, type WorkerEvent } from './worker.ts';
-import { makeUpsertVector } from './upsert-vector.ts';
+import { join } from 'node:path';
+import { EmbeddingCache } from '../vector/embedding-cache.ts';
+import type { EmbeddingProvider } from '../vector/types.ts';
+import { productionVectorModels, vectorEligibilityConfig } from './vector-eligibility.ts';
 import { daemonApiPlugin, makeEventBus } from '../routes/indexer-daemon/index.ts';
 import { startLearnWatcher, type StopWatch } from './learn-watcher.ts';
 
@@ -27,23 +29,15 @@ const PORT = parseInt(process.env.INDEXER_PORT || '47779', 10);
 const HOST = process.env.INDEXER_HOST || '127.0.0.1';
 
 export async function startDaemon(): Promise<void> {
-  const { sqlite, db, storage } = createDatabase(DB_PATH);
+  const { sqlite, storage } = createDatabase(DB_PATH);
   // Ensure WAL so concurrent readers (arra-oracle-v3) don't block writes.
   sqlite.exec('PRAGMA journal_mode = WAL');
 
-  const models = getEmbeddingModels();
+  const models = productionVectorModels(getEmbeddingModels(), vectorEligibilityConfig(process.env));
+  const cache = new EmbeddingCache(join(ORACLE_DATA_DIR, 'embedding-cache'));
   const eventBus = makeEventBus<WorkerEvent>();
   let shuttingDown = false;
   let stopLearnWatcher: StopWatch | undefined;
-
-  // Resolve doc text via the FTS5 mirror table — same content oracle_learn writes.
-  const getDocText = (docId: string): string | null => {
-    const row = db.select({ content: oracleFts.content })
-      .from(oracleFts)
-      .where(eq(oracleFts.id, docId))
-      .get();
-    return row?.content ?? null;
-  };
 
   // Embed via the existing factory — produces a model-aware OllamaEmbeddings.
   // Lazy per model so we don't spin up unused embedders.
@@ -61,33 +55,20 @@ export async function startDaemon(): Promise<void> {
     return s;
   };
 
-  const embed = async (modelKey: string, text: string): Promise<number[]> => {
-    const preset = models[modelKey];
-    if (!preset) throw new Error(`Unknown model_key: ${modelKey}`);
-    const store = await getStore(modelKey);
-    const embedder = (store as { embedder?: { embed: (texts: string[], type?: 'query' | 'passage') => Promise<number[][]> } }).embedder;
-    if (!embedder) throw new Error(`No embedder on store for ${modelKey}`);
-    const [vector] = await embedder.embed([text], 'passage');
-    return vector;
-  };
-
-  // Stores the document's real text alongside its precomputed vector, and deletes before
-  // adding so a re-index replaces the row instead of appending. Extracted to its own module
-  // because it is untestable from here — that is why #2806 survived on both branches.
-  const upsertVector = makeUpsertVector({ models, getStore });
-
   const workerPromises: Promise<unknown>[] = [];
+  const startWorkers: Array<() => Promise<unknown>> = [];
   for (const modelKey of Object.keys(models)) {
-    const p = runWorker(modelKey, {
+    const store = await getStore(modelKey);
+    const embedder = (store as unknown as { embedder: EmbeddingProvider }).embedder;
+    if (!embedder) throw new Error(`No embedder on store for ${modelKey}`);
+    startWorkers.push(() => runWorker(modelKey, {
       db: sqlite,
-      getDocText,
-      embed,
-      upsertVector,
+      incremental: { store, embedder, cache, collection: models[modelKey].collection },
+      batchSize: Number(process.env.ORACLE_INDEXER_BATCH_SIZE || 32),
       isShuttingDown: () => shuttingDown,
       onEvent: eventBus.publish,
       pollIntervalMs: 1000,
-    });
-    workerPromises.push(p);
+    }));
     console.log(`[arra-indexer] worker started for model: ${modelKey}`);
   }
 
@@ -107,6 +88,8 @@ export async function startDaemon(): Promise<void> {
       }),
     )
     .listen({ hostname: HOST, port: PORT });
+
+  for (const start of startWorkers) workerPromises.push(start());
 
   console.log(`[arra-indexer] listening on http://${HOST}:${PORT}`);
   console.log(`[arra-indexer] models: ${Object.keys(models).join(', ')}`);

@@ -94,12 +94,17 @@ export function enqueueIndexJob(conn: JobsDb, opts: EnqueueOptions): EnqueuedJob
  * Returns null when the queue is empty for that model.
  */
 export function claimNextJob(conn: JobsDb, modelKey: string): EnqueuedJob | null {
+  return claimNextJobs(conn, modelKey, 1)[0] ?? null;
+}
+
+export function claimNextJobs(conn: JobsDb, modelKey: string, batchSize = 32): EnqueuedJob[] {
+  if (!Number.isInteger(batchSize) || batchSize < 1) throw new Error('Invalid worker batch size');
   const db = asDrizzle(conn);
   const nextPending = db.select({ id: indexingJobs.id })
     .from(indexingJobs)
     .where(and(eq(indexingJobs.status, 'pending'), eq(indexingJobs.modelKey, modelKey)))
     .orderBy(asc(indexingJobs.createdAt))
-    .limit(1);
+    .limit(batchSize);
 
   const row = db.update(indexingJobs)
     .set({
@@ -114,16 +119,15 @@ export function claimNextJob(conn: JobsDb, modelKey: string): EnqueuedJob | null
       modelKey: indexingJobs.modelKey,
       collection: indexingJobs.collection,
     })
-    .get();
+    .all();
 
-  if (!row) return null;
   return row;
 }
 
-export function markJobDone(conn: JobsDb, id: string): void {
+export function markJobDone(conn: JobsDb, id: string, reason: string | null = null): void {
   const db = asDrizzle(conn);
   db.update(indexingJobs)
-    .set({ status: 'done', finishedAt: Date.now(), error: null })
+    .set({ status: 'done', finishedAt: Date.now(), error: reason })
     .where(eq(indexingJobs.id, id))
     .run();
 }

@@ -1,3 +1,4 @@
+import { runIncrementalWorker, type IncrementalWorkerDeps } from './incremental-worker.ts';
 /**
  * Indexer worker loop — M2 of the indexer-CLI design.
  *
@@ -94,8 +95,9 @@ function emit(deps: WorkerDeps, ev: WorkerEvent): void {
  */
 export async function runWorker(
   modelKey: string,
-  deps: WorkerDeps,
+  deps: WorkerDeps | IncrementalWorkerDeps,
 ): Promise<WorkerStats> {
+  if ('incremental' in deps) return runIncrementalWorker(modelKey, deps);
   const stats: WorkerStats = { modelKey, processed: 0, errors: 0, emptyPolls: 0 };
   const pollMs = deps.pollIntervalMs ?? DEFAULT_POLL_MS;
 

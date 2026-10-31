@@ -1,8 +1,10 @@
 import { Database } from 'bun:sqlite';
-import { and, count, eq, sql } from 'drizzle-orm';
+import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle, type BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 import * as schema from '../../db/schema.ts';
 import { assertSqliteIdentifier, sqliteVecEmbeddingsTable, sqliteVecMetadataTable } from '../../db/schema.ts';
+import { validateVector } from '../embedding-cache.ts';
+import { documentVectors } from '../document-vectors.ts';
 import type { EmbeddingProvider, VectorDocument, VectorQueryResult, VectorStoreAdapter } from '../types.ts';
 
 type SqliteVecDb = BunSQLiteDatabase<typeof schema>;
@@ -101,10 +103,15 @@ export class SqliteVecAdapter implements VectorStoreAdapter {
 
   async addDocuments(docs: VectorDocument[]): Promise<void> {
     if (!docs.length) return;
+    const vectors = await documentVectors(docs, this.embedder);
+    await this.upsertVectors(docs.map((doc, i) => ({ ...doc, vector: vectors[i] })));
+  }
+
+  async upsertVectors(docs: Array<VectorDocument & { vector: number[] }>): Promise<void> {
+    if (!docs.length) return;
+    docs.forEach((doc) => validateVector(doc.vector, this.embedder.dimensions));
     const db = this.requireDb();
     await this.ensureCollection();
-
-    const embeddings = await this.embedder.embed(docs.map((doc) => doc.document), 'passage');
     const { meta, vec } = this.tables();
 
     db.transaction((tx) => {
@@ -113,7 +120,7 @@ export class SqliteVecAdapter implements VectorStoreAdapter {
         tx.delete(meta).where(eq(meta.id, doc.id)).run();
         tx.delete(vec).where(eq(vec.id, doc.id)).run();
         tx.insert(meta).values({ id: doc.id, document: doc.document, metadata: JSON.stringify(doc.metadata) }).run();
-        tx.insert(vec).values({ id: doc.id, embedding: toBlob(embeddings[i]) }).run();
+        tx.insert(vec).values({ id: doc.id, embedding: toBlob(doc.vector) }).run();
       }
     });
 
@@ -121,15 +128,9 @@ export class SqliteVecAdapter implements VectorStoreAdapter {
   }
 
   async query(text: string, limit = 10, where?: Record<string, unknown>): Promise<VectorQueryResult> {
-    const db = this.requireDb();
+    this.requireDb();
     const [queryEmbedding] = await this.embedder.embed([text], 'query');
-    const fetchLimit = where ? limit * 3 : limit;
-    const rows = this.nearestRows(db, toBlob(queryEmbedding), fetchLimit);
-    const filtered = where ? rows.filter((row) => {
-      const meta = JSON.parse(row.metadata) as Record<string, unknown>;
-      return Object.entries(where).every(([key, value]) => meta[key] === value);
-    }).slice(0, limit) : rows;
-    return rowsToResult(filtered);
+    return this.queryByVector(queryEmbedding, limit, where);
   }
 
   async queryById(id: string, nResults = 5): Promise<VectorQueryResult> {
@@ -140,17 +141,20 @@ export class SqliteVecAdapter implements VectorStoreAdapter {
     return rowsToResult(this.nearestRows(db, doc.embedding, nResults + 1).filter((row) => row.id !== id).slice(0, nResults));
   }
 
-  async queryByVector(vector: number[], nResults = 5): Promise<VectorQueryResult> {
+  async queryByVector(vector: number[], nResults = 5, where?: Record<string, unknown>): Promise<VectorQueryResult> {
+    const db = this.requireDb();
+    return rowsToResult(this.nearestRows(db, toBlob(vector), nResults, where));
+  }
+
+  async deleteDocuments(ids: string[]): Promise<void> {
     const db = this.requireDb();
     const { meta, vec } = this.tables();
-    const distance = sql<number>`vec_distance_L2(${vec.embedding}, ${toBlob(vector)})`;
-    const rows = db.select({ id: vec.id, distance, document: meta.document, metadata: meta.metadata })
-      .from(vec)
-      .innerJoin(meta, eq(vec.id, meta.id))
-      .orderBy(distance)
-      .limit(nResults)
-      .all() as SqliteVecRow[];
-    return rowsToResult(rows);
+    db.transaction((tx) => {
+      for (const id of ids) {
+        tx.delete(meta).where(eq(meta.id, id)).run();
+        tx.delete(vec).where(eq(vec.id, id)).run();
+      }
+    });
   }
 
   async getStats(): Promise<{ count: number }> {
@@ -184,12 +188,16 @@ export class SqliteVecAdapter implements VectorStoreAdapter {
     };
   }
 
-  private nearestRows(db: SqliteVecDb, embedding: Buffer, limit: number): SqliteVecRow[] {
+  private nearestRows(db: SqliteVecDb, embedding: Buffer, limit: number, where?: Record<string, unknown>): SqliteVecRow[] {
     const { meta, vec } = this.tables();
+    const predicates = Object.entries(where ?? {}).map(([key, value]) =>
+      sql`json_extract(${meta.metadata}, ${`$.${JSON.stringify(key)}`}) = ${value}`);
+    const eligible = predicates.length ? db.select({ id: meta.id }).from(meta).where(and(...predicates)) : null;
     return db.select({ id: vec.id, distance: vec.distance, document: meta.document, metadata: meta.metadata })
       .from(vec)
       .innerJoin(meta, eq(vec.id, meta.id))
-      .where(and(sql`${vec.embedding} MATCH ${embedding}`, eq(vec.k, limit)))
+      .where(and(sql`${vec.embedding} MATCH ${embedding}`, eq(vec.k, limit),
+        eligible ? inArray(vec.id, eligible) : undefined))
       .orderBy(vec.distance)
       .all() as SqliteVecRow[];
   }

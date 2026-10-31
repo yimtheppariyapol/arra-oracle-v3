@@ -1,3 +1,4 @@
+import type { EmbeddingIdentity } from './embedding-cache.ts';
 export type { VectorDocument, VectorQueryResult, VectorStoreAdapter } from './adapter.ts';
 
 export type EmbedType = 'query' | 'passage';
@@ -11,6 +12,9 @@ export interface EmbeddingProvider {
   readonly name: string;
   readonly dimensions: number;
   embed(texts: string[], type?: EmbedType): Promise<number[][]>;
+  prepareText?(text: string, type?: EmbedType): string;
+  getIdentity?(): Promise<EmbeddingIdentity>;
+  embedPassageBatch?(texts: string[]): Promise<number[][]>;
 }
 
 export type EmbedderBackend = 'none' | 'local' | 'remote' | 'ollama' | 'openai' | 'gemini' | 'cloudflare-ai';

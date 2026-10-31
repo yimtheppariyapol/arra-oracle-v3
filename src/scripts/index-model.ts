@@ -6,14 +6,13 @@ import { createDatabase, oracleDocuments } from '../db/index.ts';
 import { count } from 'drizzle-orm';
 import { DB_PATH } from '../config.ts';
 import { formatIndexProgress, normalizeBatchSize } from './indexer-progress.ts';
-import {
-  applyVectorIndexPlan,
-  loadVectorIndexManifest,
-  planVectorIndex,
-  writeVectorIndexManifest,
-  type VectorIndexPlan,
-} from '../indexer/vector-index-manifest.ts';
-import type { VectorDocument } from '../vector/types.ts';
+import { loadVectorIndexManifest, planVectorIndex, type VectorIndexPlan } from '../indexer/vector-index-manifest.ts';
+import { readVectorDocuments } from '../indexer/vector-documents.ts';
+import { writeIncrementalVectors } from '../indexer/incremental-vectors.ts';
+import { EmbeddingCache } from '../vector/embedding-cache.ts';
+import type { EmbeddingProvider } from '../vector/types.ts';
+import { ORACLE_DATA_DIR } from '../config.ts';
+import { join } from 'node:path';
 
 const args = process.argv.slice(2);
 const modelKey = args.find((arg) => !arg.startsWith('--'));
@@ -31,17 +30,6 @@ const BATCH_SIZE = normalizeBatchSize(process.env.ORACLE_EMBED_BATCH_SIZE, 50);
 const dryRun = flags.has('--dry-run');
 const force = flags.has('--force');
 
-interface DbVectorRow {
-  id: string;
-  tenant_id: string;
-  type: string;
-  content: string;
-  source_file: string;
-  concepts: string;
-  project: string | null;
-  created_at: number;
-}
-
 async function main() {
   console.log(`=== ${selectedModelKey} Indexer ===`);
   console.log(`DB: ${DB_PATH}`);
@@ -53,17 +41,18 @@ async function main() {
 
   const { db, sqlite } = createDatabase(DB_PATH);
   const [{ total: docCount }] = db.select({ total: count() }).from(oracleDocuments).all();
-  const rows = loadRows(sqlite);
-  const docs = rows.map(vectorDoc);
+  const states = readVectorDocuments(db);
+  const docs = [...states.values()].flatMap((state) => state.doc ? [state.doc] : []);
   const previous = loadVectorIndexManifest(db, selectedModelKey);
   const plan = planVectorIndex(docs, previous, selectedModelKey, { force });
   const startTime = Date.now();
 
   console.log(`Documents: ${docCount}`);
-  console.log(`Chunks: ${plan.total}; changed: ${plan.changedDocs.length}; stale: ${plan.staleIds.length}; skipped: ${plan.skipped}`);
+  console.log(`Chunks: ${plan.total}; stale: ${plan.staleIds.length}`);
 
   if (dryRun) {
-    printSummary(rows, plan, { embedded: plan.changedDocs.length, errors: 0, startTime, dryRun, force });
+    console.log('Dry run leaves the model digest unresolved; embedding/cache counts are unknown.');
+    printSummary(docs, plan, { embedded: null, errors: 0, startTime, dryRun, force });
     sqlite.close();
     return;
   }
@@ -72,42 +61,27 @@ async function main() {
   await store.connect();
 
   try {
-    const applied = await applyVectorIndexPlan(store, plan, {
-      batchSize: BATCH_SIZE,
-      replaceBaseline: previous.size === 0 || force,
-      onProgress: (indexed, total, action) => logProgress(action === 'replaced' ? 'Rebuilt' : 'Embedded', indexed, total, startTime),
-    });
-    writeVectorIndexManifest(db, plan);
-    printSummary(rows, plan, { embedded: applied.embedded, errors: applied.errors, startTime, dryRun, force });
+    const embedder = (store as unknown as { embedder: EmbeddingProvider }).embedder;
+    const cache = new EmbeddingCache(join(ORACLE_DATA_DIR, 'embedding-cache'));
+    // Include prior ids so deleted/superseded chunks become tombstones. Force rebuilds
+    // still use cached embeddings and never drop the shared table.
+    const ids = [...new Set([...docs.map((doc) => doc.id), ...previous.keys()])];
+    let embedded = 0;
+    let changed = 0;
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+      const written = await writeIncrementalVectors({ db, modelKey: selectedModelKey, store, embedder, cache },
+        ids.slice(i, i + BATCH_SIZE), force);
+      written.commit();
+      embedded += written.embedded;
+      changed += written.plan.changedDocs.length;
+      logProgress('Stored', Math.min(i + BATCH_SIZE, ids.length), ids.length, startTime);
+    }
+    plan.skipped = docs.length - changed;
+    printSummary(docs, plan, { embedded, errors: 0, startTime, dryRun, force });
   } finally {
     await store.close();
     sqlite.close();
   }
-}
-
-function loadRows(sqlite: ReturnType<typeof createDatabase>['sqlite']): DbVectorRow[] {
-  return sqlite.prepare(`
-    SELECT d.id, d.tenant_id, d.type, GROUP_CONCAT(f.content, '\n') as content,
-      d.source_file, d.concepts, d.project, d.created_at
-    FROM oracle_documents d
-    JOIN oracle_fts f ON d.id = f.id
-    GROUP BY d.id
-    ORDER BY d.created_at DESC
-  `).all() as DbVectorRow[];
-}
-
-function vectorDoc(row: DbVectorRow): VectorDocument {
-  return {
-    id: row.id,
-    document: row.content,
-    metadata: {
-      type: row.type,
-      source_file: row.source_file,
-      concepts: row.concepts,
-      tenant_id: row.tenant_id,
-      ...(row.project && { project: row.project }),
-    },
-  };
 }
 
 function logProgress(label: string, indexed: number, total: number, startTime: number): void {
@@ -116,15 +90,15 @@ function logProgress(label: string, indexed: number, total: number, startTime: n
 }
 
 function printSummary(
-  rows: DbVectorRow[],
+  rows: import('../vector/types.ts').VectorDocument[],
   plan: VectorIndexPlan,
-  result: { embedded: number; errors: number; startTime: number; dryRun: boolean; force: boolean },
+  result: { embedded: number | null; errors: number; startTime: number; dryRun: boolean; force: boolean },
 ): void {
   const durationMs = Date.now() - result.startTime;
   const summary = {
-    scanned_files: new Set(rows.map((row) => row.source_file)).size,
+    scanned_files: new Set(rows.map((row) => row.metadata.source_file)).size,
     total_chunks: plan.total,
-    skipped: result.force ? 0 : plan.skipped,
+    skipped: result.dryRun ? null : plan.skipped,
     embedded: result.embedded,
     deleted: plan.staleIds.length,
     errors: result.errors,

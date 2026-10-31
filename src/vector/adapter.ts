@@ -40,6 +40,8 @@ export interface VectorStoreAdapter {
   ensureCollection(): Promise<void>;
   deleteCollection(): Promise<void>;
   addDocuments(docs: VectorDocument[]): Promise<void>;
+  /** Strict write boundary: vectors are required; this method never calls an embedder. */
+  upsertVectors?(docs: Array<VectorDocument & { vector: number[] }>): Promise<void>;
   /** Delete specific vector rows by document/chunk id without dropping the collection. */
   deleteDocuments?(ids: string[]): Promise<void>;
   /**
@@ -53,7 +55,7 @@ export interface VectorStoreAdapter {
   replaceDocuments?(docs: VectorDocument[]): Promise<void>;
   query(text: string, limit?: number, where?: Record<string, any>): Promise<VectorQueryResult>;
   queryById(id: string, nResults?: number): Promise<VectorQueryResult>;
-  queryByVector?(vector: number[], nResults?: number): Promise<VectorQueryResult>;
+  queryByVector?(vector: number[], nResults?: number, where?: Record<string, unknown>): Promise<VectorQueryResult>;
   getStats(): Promise<{ count: number }>;
   getCollectionInfo(): Promise<{ count: number; name: string }>;
   getAllEmbeddings?(limit?: number): Promise<{

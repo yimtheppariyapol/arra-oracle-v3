@@ -5,7 +5,7 @@
  * and deployment settings for the standalone vector server (Phase 3).
  *
  * The file is optional. When absent, getEmbeddingModels() returns the
- * default-safe sqlite-vec config. When present, it's the source of truth.
+ * default LanceDB config. When present, it's the source of truth.
  */
 
 import fs from 'fs';

@@ -40,6 +40,8 @@ export interface LearnWatcherOptions {
   repoRoot?: string;
   /** Debounce window in ms to collapse bursty editor saves. */
   debounceMs?: number;
+  /** Injectable event source for deterministic tests and alternate filesystem backends. */
+  watch?: (dir: string, onEvent: (file: string) => void) => { close(): void } | null;
 }
 
 export type StopWatch = () => void;
@@ -105,6 +107,7 @@ export function startLearnWatcher({
   models,
   repoRoot = REPO_ROOT,
   debounceMs = DEFAULT_DEBOUNCE_MS,
+  watch = watchDir,
 }: LearnWatcherOptions): StopWatch {
   const db = drizzle(sqlite, { schema });
   const root = path.resolve(repoRoot);
@@ -116,7 +119,7 @@ export function startLearnWatcher({
 
   if (roots.length === 0) return () => {};
 
-  const watchers: Array<fs.FSWatcher> = [];
+  const watchers: Array<{ close(): void }> = [];
   const watchedDirs = new Set<string>();
   const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -161,7 +164,7 @@ export function startLearnWatcher({
   function addWatchers(dir: string): void {
     for (const childDir of listDirs(dir)) {
       if (watchedDirs.has(childDir)) continue;
-      const watcher = watchDir(childDir, (candidate) => timerFor(candidate, () => indexOrQueue(candidate)));
+      const watcher = watch(childDir, (candidate) => timerFor(candidate, () => indexOrQueue(candidate)));
       if (!watcher) continue;
       watchedDirs.add(childDir);
       watchers.push(watcher);

@@ -1,3 +1,4 @@
+import { ollamaIdentity } from './ollama-identity.ts';
 import type { EmbeddingProvider, EmbeddingProviderType, EmbedType } from './types.ts';
 import { NoneEmbeddings, RemoteHttpEmbeddings } from './embedding-backends.ts';
 import { EmbeddingFallbackChain } from './fallback-chain.ts';
@@ -60,7 +61,7 @@ export class OllamaEmbeddings implements EmbeddingProvider {
     }
     return embeddings;
   }
-  private prepareText(text: string, type?: EmbedType): string {
+  prepareText(text: string, type?: EmbedType): string {
     let truncated = text.length > 2000 ? text.slice(0, 2000) : text;
     const isQwen3 = this.model.includes('qwen3-embedding');
     const isE5 = this.model.includes('multilingual-e5') || this.model.includes('/e5-');
@@ -77,6 +78,10 @@ export class OllamaEmbeddings implements EmbeddingProvider {
       }
     }
     return truncated;
+  }
+  getIdentity() { return ollamaIdentity(this.baseUrl, this.model, this.dimensions); }
+  async embedPassageBatch(texts: string[]): Promise<number[][]> {
+    return (await this.embedBatchWithRetry(texts.map((text) => this.prepareText(text, 'passage')))).embeddings;
   }
   private async embedBatchWithRetry(input: string[]): Promise<{ embeddings: number[][] }> {
     let lastError: unknown;

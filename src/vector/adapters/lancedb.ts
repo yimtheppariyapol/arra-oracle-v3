@@ -1,5 +1,8 @@
 import type { VectorStoreAdapter, VectorDocument, VectorQueryResult, EmbeddingProvider } from '../types.ts';
-import { buildLanceRows } from './lancedb-rows.ts';
+import { ensureLanceMetadata, lanceFilter } from './lancedb-metadata.ts';
+import { validateVector } from '../embedding-cache.ts';
+import { documentVectors } from '../document-vectors.ts';
+import { buildLanceRows, lanceRow } from './lancedb-rows.ts';
 
 export class LanceDBAdapter implements VectorStoreAdapter {
   readonly name = 'lancedb';
@@ -41,14 +44,12 @@ export class LanceDBAdapter implements VectorStoreAdapter {
     } else {
       const dims = this.embedder.dimensions;
       this.table = await this.db.createTable(this.collectionName, [{
-        id: '__init__',
-        text: '',
-        metadata: '{}',
-        vector: new Array(dims).fill(0),
+        ...lanceRow({ id: '__init__', document: '', metadata: {} }, new Array(dims).fill(0)),
       }]);
-      await this.table.delete('id = "__init__"');
+      await this.table.delete("id = '__init__'");
     }
 
+    await ensureLanceMetadata(this.table);
     try {
       const count = await this.table.countRows();
       console.error(`[LanceDB] Vector collection ready (${count} items)`);
@@ -97,11 +98,18 @@ export class LanceDBAdapter implements VectorStoreAdapter {
   }
 
   async addDocuments(docs: VectorDocument[]): Promise<void> {
-    if (docs.length === 0) return;
+    const vectors = await documentVectors(docs, this.embedder);
+    await this.upsertVectors(docs.map((doc, i) => ({ ...doc, vector: vectors[i] })));
+  }
+
+  async upsertVectors(docs: Array<VectorDocument & { vector: number[] }>): Promise<void> {
+    if (!docs.length) return;
+    const rows = docs.map((doc) => {
+      validateVector(doc.vector, this.embedder.dimensions);
+      return lanceRow(doc, doc.vector);
+    });
     if (!this.table) await this.ensureCollection();
     await this.checkoutLatest();
-
-    const { rows, reused } = await buildLanceRows(docs, this.embedder);
 
     // `table.add` APPENDS, so re-indexing one document left a second row with the same id
     // and both were returned by search — one deployment grew 3,325 → 3,953 rows while trying
@@ -119,7 +127,7 @@ export class LanceDBAdapter implements VectorStoreAdapter {
       .whenMatchedUpdateAll()
       .whenNotMatchedInsertAll()
       .execute(rows);
-    console.error(`[LanceDB] Upserted ${docs.length} documents${reused > 0 ? ` (${reused} with precomputed vectors)` : ''}`);
+    console.error(`[LanceDB] Upserted ${docs.length} documents with precomputed vectors`);
   }
 
   async replaceDocuments(docs: VectorDocument[]): Promise<void> {
@@ -143,20 +151,7 @@ export class LanceDBAdapter implements VectorStoreAdapter {
     await this.checkoutLatest();
     const [queryEmbedding] = await this.embedder.embed([text], 'query');
 
-    // Fetch extra results if filtering in JS (metadata is stored as string, not binary)
-    const fetchLimit = where ? limit * 3 : limit;
-    const results = await this.table.search(queryEmbedding).distanceType('cosine').limit(fetchLimit).toArray();
-
-    // Filter metadata in JavaScript (LanceDB json_extract requires LargeBinary, not Utf8)
-    let filtered = results;
-    if (where) {
-      filtered = results.filter((r: any) => {
-        const meta = JSON.parse(r.metadata || '{}');
-        return Object.entries(where).every(([k, v]) => meta[k] === v);
-      }).slice(0, limit);
-    }
-
-    return this.rowsToQueryResult(filtered);
+    return this.queryByVector(queryEmbedding, limit, where);
   }
 
   async queryById(id: string, nResults: number = 5): Promise<VectorQueryResult> {
@@ -164,7 +159,7 @@ export class LanceDBAdapter implements VectorStoreAdapter {
     await this.checkoutLatest();
 
     // Get the document's vector using filter query (not vector search)
-    const rows = await this.table.query().where(`id = '${id}'`).limit(1).toArray();
+    const rows = await this.table.query().where(`id = '${id.replaceAll("'", "''")}'`).limit(1).toArray();
     if (rows.length === 0) {
       throw new Error(`No embedding found for document: ${id}`);
     }
@@ -175,10 +170,14 @@ export class LanceDBAdapter implements VectorStoreAdapter {
     return this.rowsToQueryResult(filtered);
   }
 
-  async queryByVector(vector: number[], nResults: number = 5): Promise<VectorQueryResult> {
+  async queryByVector(vector: number[], nResults: number = 5, where?: Record<string, unknown>): Promise<VectorQueryResult> {
     if (!this.table) await this.ensureCollection();
     await this.checkoutLatest();
-    const results = await this.table.search(vector).distanceType('cosine').limit(nResults).toArray();
+    // where() is a prefilter by default in LanceDB; limit applies to the matching set.
+    const query = this.table.query();
+    const predicate = lanceFilter(where);
+    if (predicate) query.where(predicate);
+    const results = await query.nearestTo(vector).distanceType('cosine').limit(nResults).toArray();
     return this.rowsToQueryResult(results);
   }
 
@@ -192,7 +191,7 @@ export class LanceDBAdapter implements VectorStoreAdapter {
         try {
           const tableNames = await this.db.tableNames();
           if (tableNames.includes(this.collectionName)) {
-            this.table = await this.db.openTable(this.collectionName);
+            await this.ensureCollection();
           }
         } catch {}
       }
