@@ -24,6 +24,7 @@ import type { EmbeddingProvider } from '../vector/types.ts';
 import { productionVectorModels, vectorEligibilityConfig } from './vector-eligibility.ts';
 import { daemonApiPlugin, makeEventBus } from '../routes/indexer-daemon/index.ts';
 import { startLearnWatcher, type StopWatch } from './learn-watcher.ts';
+import { superviseWorker } from './worker-supervisor.ts';
 
 const PORT = parseInt(process.env.INDEXER_PORT || '47779', 10);
 const HOST = process.env.INDEXER_HOST || '127.0.0.1';
@@ -89,7 +90,10 @@ export async function startDaemon(): Promise<void> {
     )
     .listen({ hostname: HOST, port: PORT });
 
-  for (const start of startWorkers) workerPromises.push(start());
+  for (const start of startWorkers) workerPromises.push(superviseWorker(start, {
+    isShuttingDown: () => shuttingDown,
+    onError: (error) => console.error('[arra-indexer] worker failed; retrying:', error),
+  }));
 
   console.log(`[arra-indexer] listening on http://${HOST}:${PORT}`);
   console.log(`[arra-indexer] models: ${Object.keys(models).join(', ')}`);

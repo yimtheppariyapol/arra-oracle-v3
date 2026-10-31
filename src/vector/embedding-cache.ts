@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { EmbeddingCacheLru } from './embedding-cache-lru.ts';
 import { join } from 'node:path';
 import type { EmbeddingProvider, VectorDocument } from './types.ts';
+import { embedHealthyBatch } from './embedding-batch.ts';
 
 export const CHUNKER_VERSION = 'paragraph-800-v1';
 export interface EmbeddingIdentity { model: string; digest: string; dimensions: number }
@@ -54,14 +55,10 @@ export class EmbeddingCache {
     }
     if (missing.size) {
       const texts = [...missing.values()];
-      let fresh: number[][];
-      try { fresh = await (provider.embedPassageBatch?.(texts) ?? provider.embed(texts, 'passage')); }
-      catch (error) {
-        if (/\b(400|422)\b|invalid input/i.test(String(error))) throw error;
-        throw new Error(`Embedding provider unavailable: ${error}`, { cause: error });
-      }
-      if (fresh.length !== texts.length) throw new Error('Embedding batch cardinality mismatch');
-      fresh.forEach((vector) => validateVector(vector, identity.dimensions));
+      const fresh = await embedHealthyBatch(provider, texts, (vectors, count) => {
+        if (vectors.length !== count) throw new Error('Embedding batch cardinality mismatch');
+        vectors.forEach((vector) => validateVector(vector, identity.dimensions));
+      });
       await mkdir(this.directory, { recursive: true });
       let i = 0;
       for (const key of missing.keys()) {

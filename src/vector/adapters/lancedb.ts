@@ -53,7 +53,7 @@ export class LanceDBAdapter implements VectorStoreAdapter {
       }
 
       await ensureLanceMetadata(this.table);
-    });
+    }, Infinity);
     try {
       const count = await this.table.countRows();
       console.error(`[LanceDB] Vector collection ready (${count} items)`);

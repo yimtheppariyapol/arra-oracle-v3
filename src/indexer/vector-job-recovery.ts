@@ -15,10 +15,14 @@ export function recoverVectorJobs(input: OracleDbInput, modelKey: string, includ
       lt(indexingJobs.attempts, 3), lt(indexingJobs.finishedAt, Date.now() - 1000))).run();
 }
 
-/** Durable tombstones are ordinary queue rows; discovery also covers deletion outside the indexer. */
+// Parser/collector namespaces; arbitrary frontmatter/import ids require a manifest as proof.
+const indexerDocumentId = /^(?:learning|resonance|retro|distillation|security_corpus)_[^:\s]+$/;
+
+/** Shared collections contain other writers' rows. Absence from SQLite alone is not ownership. */
 export function queueVectorTombstones(input: OracleDbInput, modelKey: string, collection: string, vectorIds: string[] = []): number {
   const db = asOracleDb(input);
-  const ids = [...new Set([...loadVectorIndexManifest(input, modelKey).keys(), ...vectorIds])];
+  const manifest = loadVectorIndexManifest(input, modelKey);
+  const ids = [...new Set([...manifest.keys(), ...vectorIds.filter((id) => indexerDocumentId.test(id))])];
   if (!ids.length) return 0;
   const states = readVectorDocuments(input, ids);
   const active = new Set(db.select({ docId: indexingJobs.docId }).from(indexingJobs)
@@ -28,6 +32,7 @@ export function queueVectorTombstones(input: OracleDbInput, modelKey: string, co
   db.transaction(() => {
     for (const [docId, state] of states) {
       if (!state.reason || active.has(docId)) continue;
+      if (!manifest.has(docId) && state.reason !== 'deleted' && state.reason !== 'superseded') continue;
       queued += enqueueIndexJob(db, { docId, modelKey, models: { [modelKey]: { collection } } }).length;
     }
   });
