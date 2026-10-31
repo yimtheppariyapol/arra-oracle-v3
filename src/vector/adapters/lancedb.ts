@@ -1,3 +1,5 @@
+import { withFileLock } from '../../utils/file-lock.ts';
+import { join } from 'node:path';
 import type { VectorStoreAdapter, VectorDocument, VectorQueryResult, EmbeddingProvider } from '../types.ts';
 import { ensureLanceMetadata, lanceFilter } from './lancedb-metadata.ts';
 import { validateVector } from '../embedding-cache.ts';
@@ -38,18 +40,20 @@ export class LanceDBAdapter implements VectorStoreAdapter {
   async ensureCollection(): Promise<void> {
     if (!this.db) await this.connect();
 
-    const tableNames = await this.db.tableNames();
-    if (tableNames.includes(this.collectionName)) {
-      this.table = await this.db.openTable(this.collectionName);
-    } else {
-      const dims = this.embedder.dimensions;
-      this.table = await this.db.createTable(this.collectionName, [{
-        ...lanceRow({ id: '__init__', document: '', metadata: {} }, new Array(dims).fill(0)),
-      }]);
-      await this.table.delete("id = '__init__'");
-    }
+    await withFileLock(join(this.dbPath, `.migrate-${encodeURIComponent(this.collectionName)}.lock`), async () => {
+      const tableNames = await this.db.tableNames();
+      if (tableNames.includes(this.collectionName)) {
+        this.table = await this.db.openTable(this.collectionName);
+      } else {
+        const dims = this.embedder.dimensions;
+        this.table = await this.db.createTable(this.collectionName, [{
+          ...lanceRow({ id: '__init__', document: '', metadata: {} }, new Array(dims).fill(0)),
+        }]);
+        await this.table.delete("id = '__init__'");
+      }
 
-    await ensureLanceMetadata(this.table);
+      await ensureLanceMetadata(this.table);
+    });
     try {
       const count = await this.table.countRows();
       console.error(`[LanceDB] Vector collection ready (${count} items)`);
@@ -179,6 +183,12 @@ export class LanceDBAdapter implements VectorStoreAdapter {
     if (predicate) query.where(predicate);
     const results = await query.nearestTo(vector).distanceType('cosine').limit(nResults).toArray();
     return this.rowsToQueryResult(results);
+  }
+
+  async listDocumentIds(): Promise<string[]> {
+    if (!this.table) await this.ensureCollection();
+    await this.checkoutLatest();
+    return (await this.table.query().select(['id']).toArray()).map((row: { id: string }) => row.id);
   }
 
   async getStats(): Promise<{ count: number }> {

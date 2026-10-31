@@ -151,6 +151,13 @@ export function reclaimStaleJob(conn: JobsDb, id: string): void {
     .run();
 }
 
+/** Release a paused claim without charging an infrastructure failure to the document. */
+export function pauseVectorJob(conn: JobsDb, id: string): void {
+  asDrizzle(conn).update(indexingJobs).set({ status: 'pending', claimedAt: null,
+    attempts: sql`MAX(0, ${indexingJobs.attempts} - 1)` })
+    .where(and(eq(indexingJobs.id, id), eq(indexingJobs.status, 'claimed'))).run();
+}
+
 export function jobsByStatus(
   conn: JobsDb,
   modelKey?: string,

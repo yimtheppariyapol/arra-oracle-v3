@@ -157,6 +157,11 @@ export class SqliteVecAdapter implements VectorStoreAdapter {
     });
   }
 
+  async listDocumentIds(): Promise<string[]> {
+    const { meta: table } = this.tables();
+    return this.requireDb().select({ id: table.id }).from(table).all().map((row) => row.id);
+  }
+
   async getStats(): Promise<{ count: number }> {
     if (!this.db) return { count: 0 };
     try {

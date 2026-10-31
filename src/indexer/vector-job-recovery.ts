@@ -16,9 +16,9 @@ export function recoverVectorJobs(input: OracleDbInput, modelKey: string, includ
 }
 
 /** Durable tombstones are ordinary queue rows; discovery also covers deletion outside the indexer. */
-export function queueVectorTombstones(input: OracleDbInput, modelKey: string, collection: string): number {
+export function queueVectorTombstones(input: OracleDbInput, modelKey: string, collection: string, vectorIds: string[] = []): number {
   const db = asOracleDb(input);
-  const ids = [...loadVectorIndexManifest(input, modelKey).keys()];
+  const ids = [...new Set([...loadVectorIndexManifest(input, modelKey).keys(), ...vectorIds])];
   if (!ids.length) return 0;
   const states = readVectorDocuments(input, ids);
   const active = new Set(db.select({ docId: indexingJobs.docId }).from(indexingJobs)

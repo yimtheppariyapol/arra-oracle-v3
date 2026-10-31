@@ -1,4 +1,5 @@
 import { Index, type Table } from '@lancedb/lancedb';
+import { dedupeLegacyRows, legacyMetadata } from './lancedb-dedupe.ts';
 import { LANCE_FILTER_COLUMNS, lanceRow } from './lancedb-rows.ts';
 
 /** Upgrade old JSON-only tables in place, resumably, without embedding or dropping rows. */
@@ -9,12 +10,18 @@ export async function ensureLanceMetadata(table: Table): Promise<void> {
   if (missing.length) await table.addColumns(missing.map((name) => ({
     name, valueSql: `CAST(NULL AS ${name === 'doc_date' || name === 'metadata_version' ? 'DOUBLE' : 'STRING'})`,
   })));
+  if (missing.length || await table.countRows('metadata_version IS NULL OR metadata_version < 2')) await dedupeLegacyRows(table);
   while (true) {
-    const rows = await table.query().where('metadata_version IS NULL').limit(256).toArray();
+    const rows = await table.query().where('metadata_version IS NULL OR metadata_version < 2').limit(256).toArray();
     if (!rows.length) break;
-    const converted = rows.map((row) => lanceRow({
-      id: row.id, document: row.text, metadata: JSON.parse(row.metadata || '{}'),
-    }, Array.from(row.vector)));
+    const converted = rows.map((row) => {
+      const metadata = legacyMetadata(row.metadata);
+      const date = Number(metadata.doc_date ?? 0);
+      if (!Number.isSafeInteger(date)) console.warn(`[LanceDB] Invalid legacy doc_date for ${row.id}; using 0`);
+      metadata.doc_date = Number.isSafeInteger(date) ? date : 0;
+      metadata.house ||= metadata.project ?? '';
+      return lanceRow({ id: row.id, document: row.text, metadata }, Array.from(row.vector));
+    });
     await table.mergeInsert('id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute(converted);
   }
   const indexed = new Set((await table.listIndices()).flatMap((index) => index.columns));

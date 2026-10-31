@@ -5,13 +5,13 @@
  * and deployment settings for the standalone vector server (Phase 3).
  *
  * The file is optional. When absent, getEmbeddingModels() returns the
- * default LanceDB config. When present, it's the source of truth.
+ * default sqlite-vec config. When present, it's the source of truth.
  */
 
 import fs from 'fs';
 import path from 'path';
 import { ORACLE_DATA_DIR } from '../config.ts';
-import { DEFAULT_SAFE_VECTOR_ENGINE, DEFAULT_VECTOR_LOCAL_ENGINES } from '../config/defaults.ts';
+import { DEFAULT_SAFE_VECTOR_ENGINE, DEFAULT_VECTOR_LOCAL_ENGINES, detectDefaultVectorBackend } from '../config/defaults.ts';
 import { COLLECTION_NAME, LANCEDB_DIR_NAME, VECTORS_DB_FILE } from '../const.ts';
 import type { VectorDBType } from './types.ts';
 import type { LocalVectorEngine, VectorCollectionConfig, VectorConfigUpdate, VectorProxyManifest, VectorServerConfig, VectorStorageConfig } from './config-types.ts';
@@ -45,7 +45,7 @@ export function configPath(dataDir = process.env.ORACLE_DATA_DIR || ORACLE_DATA_
  * This is the "factory" version — users can tweak after writing to disk.
  */
 export function generateDefaultConfig(): VectorServerConfig {
-  const adapter = DEFAULT_SAFE_VECTOR_ENGINE;
+  const adapter = detectDefaultVectorBackend({ envEngine: process.env.ORACLE_VECTOR_DB }).engine as LocalVectorEngine;
   const dataPath = defaultDataPathForEngine(adapter);
   return {
     version: '1.0',
@@ -145,7 +145,7 @@ export function defaultDataPathForEngine(engine: LocalVectorEngine): string {
 
 export function activeVectorEngine(config: VectorServerConfig): VectorDBType {
   const primary = Object.values(config.collections).find(c => c.primary);
-  return primary?.adapter || Object.values(config.collections)[0]?.adapter || 'lancedb';
+  return primary?.adapter || Object.values(config.collections)[0]?.adapter || DEFAULT_SAFE_VECTOR_ENGINE;
 }
 
 export function applyVectorConfigUpdate(

@@ -2,299 +2,48 @@
   "version": "7",
   "dialect": "sqlite",
   "entries": [
-    {
-      "idx": 0,
-      "version": "6",
-      "when": 1768012959199,
-      "tag": "0000_unknown_viper",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1768014841758,
-      "tag": "0001_chunky_dark_phoenix",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1768119304148,
-      "tag": "0002_mixed_rhodey",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1769655270002,
-      "tag": "0003_rapid_strong_guy",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1772064000000,
-      "tag": "0004_warm_mesmero",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1772236800000,
-      "tag": "0005_add_schedule",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1772415363037,
-      "tag": "0006_magenta_screwball",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1776574727337,
-      "tag": "0007_add_menu_items",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1777248000000,
-      "tag": "0008_menu_host",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "6",
-      "when": 1777852800000,
-      "tag": "0009_menu_hidden",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "6",
-      "when": 1778457600000,
-      "tag": "0010_menu_query",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "6",
-      "when": 1778803200000,
-      "tag": "0011_menu_reorg",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "6",
-      "when": 1779321600000,
-      "tag": "0012_menu_studio",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "6",
-      "when": 1780000000000,
-      "tag": "0013_forum_subdomain",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "6",
-      "when": 1780012800000,
-      "tag": "0014_menu_path_studio_composite",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "6",
-      "when": 1780099200000,
-      "tag": "0015_menu_scope",
-      "breakpoints": true
-    },
-    {
-      "idx": 16,
-      "version": "6",
-      "when": 1780185600000,
-      "tag": "0016_indexing_jobs",
-      "breakpoints": true
-    },
-    {
-      "idx": 17,
-      "version": "6",
-      "when": 1746547200000,
-      "tag": "0017_fts5_bootstrap",
-      "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "6",
-      "when": 1781533820091,
-      "tag": "0018_volatile_jimmy_woo",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "6",
-      "when": 1781552525726,
-      "tag": "0019_mushy_changeling",
-      "breakpoints": true
-    },
-    {
-      "idx": 20,
-      "version": "6",
-      "when": 1781553300000,
-      "tag": "0020_soft_delete_menu_items",
-      "breakpoints": true
-    },
-    {
-      "idx": 21,
-      "version": "6",
-      "when": 1781591042651,
-      "tag": "0021_add_oracle_memories",
-      "breakpoints": true
-    },
-    {
-      "idx": 22,
-      "version": "6",
-      "when": 1781595000000,
-      "tag": "0022_tenant_isolation",
-      "breakpoints": true
-    },
-    {
-      "idx": 23,
-      "version": "6",
-      "when": 1781597100000,
-      "tag": "0023_query_optimization_indexes",
-      "breakpoints": true
-    },
-    {
-      "idx": 24,
-      "version": "6",
-      "when": 1781620651217,
-      "tag": "0024_export_job_history",
-      "breakpoints": true
-    },
-    {
-      "idx": 25,
-      "version": "6",
-      "when": 1781624768517,
-      "tag": "0025_export_jobs_tenant",
-      "breakpoints": true
-    },
-    {
-      "idx": 26,
-      "version": "6",
-      "when": 1781628166154,
-      "tag": "0026_oracle_memories_tenant",
-      "breakpoints": true
-    },
-    {
-      "idx": 27,
-      "version": "6",
-      "when": 1781631000000,
-      "tag": "0027_schedule_tenant",
-      "breakpoints": true
-    },
-    {
-      "idx": 28,
-      "version": "6",
-      "when": 1781664000000,
-      "tag": "0028_menu_tenant",
-      "breakpoints": true
-    },
-    {
-      "idx": 29,
-      "version": "6",
-      "when": 1781670000000,
-      "tag": "0029_plugin_metadata",
-      "breakpoints": true
-    },
-    {
-      "idx": 30,
-      "version": "6",
-      "when": 1781671000000,
-      "tag": "0030_document_usage_reinforcement",
-      "breakpoints": true
-    },
-    {
-      "idx": 31,
-      "version": "6",
-      "when": 1781683200000,
-      "tag": "0031_oracle_documents_valid_time",
-      "breakpoints": true
-    },
-    {
-      "idx": 32,
-      "version": "6",
-      "when": 1781669499599,
-      "tag": "0032_schema_integrity_guards",
-      "breakpoints": true
-    },
-    {
-      "idx": 33,
-      "version": "6",
-      "when": 1781686800000,
-      "tag": "0033_memory_valid_time",
-      "breakpoints": true
-    },
-    {
-      "idx": 34,
-      "version": "6",
-      "when": 1781700000000,
-      "tag": "0034_memory_ttl",
-      "breakpoints": true
-    },
-    {
-      "idx": 35,
-      "version": "6",
-      "when": 1781669700000,
-      "tag": "0035_entity_links_ranking_sidecar",
-      "breakpoints": true
-    },
-    {
-      "idx": 36,
-      "version": "6",
-      "when": 1781703600000,
-      "tag": "0036_memory_consolidation",
-      "breakpoints": true
-    },
-    {
-      "idx": 37,
-      "version": "6",
-      "when": 1781703700000,
-      "tag": "0037_memory_tiered_salience",
-      "breakpoints": true
-    },
-    {
-      "idx": 38,
-      "version": "6",
-      "when": 1781703800000,
-      "tag": "0038_pointer_index",
-      "breakpoints": true
-    },
-    {
-      "idx": 39,
-      "version": "6",
-      "when": 1781703900000,
-      "tag": "0039_vector_index_manifest",
-      "breakpoints": true
-    },
-    {
-      "idx": 40,
-      "version": "6",
-      "when": 1781704000000,
-      "tag": "0040_oracle_findings",
-      "breakpoints": true
-    },
-    {
-      "idx": 41,
-      "version": "6",
-      "when": 1783717000000,
-      "tag": "0041_fleet_log",
-      "breakpoints": true
-    }
+    {"idx": 0, "version": "6", "when": 1768012959199, "tag": "0000_unknown_viper", "breakpoints": true},
+    {"idx": 1, "version": "6", "when": 1768014841758, "tag": "0001_chunky_dark_phoenix", "breakpoints": true},
+    {"idx": 2, "version": "6", "when": 1768119304148, "tag": "0002_mixed_rhodey", "breakpoints": true},
+    {"idx": 3, "version": "6", "when": 1769655270002, "tag": "0003_rapid_strong_guy", "breakpoints": true},
+    {"idx": 4, "version": "6", "when": 1772064000000, "tag": "0004_warm_mesmero", "breakpoints": true},
+    {"idx": 5, "version": "6", "when": 1772236800000, "tag": "0005_add_schedule", "breakpoints": true},
+    {"idx": 6, "version": "6", "when": 1772415363037, "tag": "0006_magenta_screwball", "breakpoints": true},
+    {"idx": 7, "version": "6", "when": 1776574727337, "tag": "0007_add_menu_items", "breakpoints": true},
+    {"idx": 8, "version": "6", "when": 1777248000000, "tag": "0008_menu_host", "breakpoints": true},
+    {"idx": 9, "version": "6", "when": 1777852800000, "tag": "0009_menu_hidden", "breakpoints": true},
+    {"idx": 10, "version": "6", "when": 1778457600000, "tag": "0010_menu_query", "breakpoints": true},
+    {"idx": 11, "version": "6", "when": 1778803200000, "tag": "0011_menu_reorg", "breakpoints": true},
+    {"idx": 12, "version": "6", "when": 1779321600000, "tag": "0012_menu_studio", "breakpoints": true},
+    {"idx": 13, "version": "6", "when": 1780000000000, "tag": "0013_forum_subdomain", "breakpoints": true},
+    {"idx": 14, "version": "6", "when": 1780012800000, "tag": "0014_menu_path_studio_composite", "breakpoints": true},
+    {"idx": 15, "version": "6", "when": 1780099200000, "tag": "0015_menu_scope", "breakpoints": true},
+    {"idx": 16, "version": "6", "when": 1780185600000, "tag": "0016_indexing_jobs", "breakpoints": true},
+    {"idx": 17, "version": "6", "when": 1746547200000, "tag": "0017_fts5_bootstrap", "breakpoints": true},
+    {"idx": 18, "version": "6", "when": 1781533820091, "tag": "0018_volatile_jimmy_woo", "breakpoints": true},
+    {"idx": 19, "version": "6", "when": 1781552525726, "tag": "0019_mushy_changeling", "breakpoints": true},
+    {"idx": 20, "version": "6", "when": 1781553300000, "tag": "0020_soft_delete_menu_items", "breakpoints": true},
+    {"idx": 21, "version": "6", "when": 1781591042651, "tag": "0021_add_oracle_memories", "breakpoints": true},
+    {"idx": 22, "version": "6", "when": 1781595000000, "tag": "0022_tenant_isolation", "breakpoints": true},
+    {"idx": 23, "version": "6", "when": 1781597100000, "tag": "0023_query_optimization_indexes", "breakpoints": true},
+    {"idx": 24, "version": "6", "when": 1781620651217, "tag": "0024_export_job_history", "breakpoints": true},
+    {"idx": 25, "version": "6", "when": 1781624768517, "tag": "0025_export_jobs_tenant", "breakpoints": true},
+    {"idx": 26, "version": "6", "when": 1781628166154, "tag": "0026_oracle_memories_tenant", "breakpoints": true},
+    {"idx": 27, "version": "6", "when": 1781631000000, "tag": "0027_schedule_tenant", "breakpoints": true},
+    {"idx": 28, "version": "6", "when": 1781664000000, "tag": "0028_menu_tenant", "breakpoints": true},
+    {"idx": 29, "version": "6", "when": 1781670000000, "tag": "0029_plugin_metadata", "breakpoints": true},
+    {"idx": 30, "version": "6", "when": 1781671000000, "tag": "0030_document_usage_reinforcement", "breakpoints": true},
+    {"idx": 31, "version": "6", "when": 1781683200000, "tag": "0031_oracle_documents_valid_time", "breakpoints": true},
+    {"idx": 32, "version": "6", "when": 1781669499599, "tag": "0032_schema_integrity_guards", "breakpoints": true},
+    {"idx": 33, "version": "6", "when": 1781686800000, "tag": "0033_memory_valid_time", "breakpoints": true},
+    {"idx": 34, "version": "6", "when": 1781700000000, "tag": "0034_memory_ttl", "breakpoints": true},
+    {"idx": 35, "version": "6", "when": 1781669700000, "tag": "0035_entity_links_ranking_sidecar", "breakpoints": true},
+    {"idx": 36, "version": "6", "when": 1781703600000, "tag": "0036_memory_consolidation", "breakpoints": true},
+    {"idx": 37, "version": "6", "when": 1781703700000, "tag": "0037_memory_tiered_salience", "breakpoints": true},
+    {"idx": 38, "version": "6", "when": 1781703800000, "tag": "0038_pointer_index", "breakpoints": true},
+    {"idx": 39, "version": "6", "when": 1781703900000, "tag": "0039_vector_index_manifest", "breakpoints": true},
+    {"idx": 40, "version": "6", "when": 1781704000000, "tag": "0040_oracle_findings", "breakpoints": true},
+    {"idx": 41, "version": "6", "when": 1783717000000, "tag": "0041_fleet_log", "breakpoints": true},
+    {"idx": 42, "version": "6", "when": 1793400000000, "tag": "0042_fts_rowid_lookup", "breakpoints": true}
   ]
 }

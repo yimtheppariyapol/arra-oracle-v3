@@ -1,3 +1,4 @@
+import { DEFAULT_SAFE_VECTOR_ENGINE } from '../config/defaults.ts';
 import type { EmbedderConfig } from './types.ts';
 import type { VectorCollectionConfig, VectorModelRegistryEntry, VectorServerConfig } from './config-types.ts';
 
@@ -31,7 +32,7 @@ export function configToModels(config: VectorServerConfig): Record<string, Vecto
     out[key] = {
       collection: col.collection,
       model: col.model,
-      adapter: col.adapter || 'lancedb',
+      adapter: col.adapter || DEFAULT_SAFE_VECTOR_ENGINE,
       provider: col.provider,
       service: col.service,
       endpoint: col.endpoint || resolveServiceEndpoint(config, col.service),

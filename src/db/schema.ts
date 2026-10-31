@@ -36,6 +36,10 @@ export const oracleDocuments = sqliteTable('oracle_documents', {
   index('idx_documents_tenant_type_active_updated').on(table.tenantId, table.type, table.supersededAt, table.updatedAt),
   index('idx_documents_tenant_valid_time').on(table.tenantId, table.validTime),
 ]);
+/** FTS5-managed content table; only its id index is managed by our migration. */
+export const oracleFtsContent = sqliteTable('oracle_fts_content', {
+  rowid: integer('id').primaryKey(), docId: text('c0'), content: text('c1'), concepts: text('c2'),
+}, (table) => [index('idx_fts_content_doc_id').on(table.docId)]);
 export const oracleFts = sqliteTable('oracle_fts', { id: text('id'), content: text('content'), concepts: text('concepts') });
 export const oracleEntityLinks = sqliteTable('oracle_entity_links', {
   id: text('id').primaryKey(),

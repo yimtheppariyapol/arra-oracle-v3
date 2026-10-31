@@ -25,7 +25,7 @@ describe('vector engine/config selection coverage', () => {
     expect(defaultDataPathForEngine('sqlite-vec')).toContain('vectors.db');
   });
 
-  test('activeVectorEngine prefers primary collection then first collection then lancedb fallback', async () => {
+  test('activeVectorEngine prefers primary collection then first collection then sqlite-vec fallback', async () => {
     const { activeVectorEngine, generateDefaultConfig } = await import('../config.ts');
     const cfg = generateDefaultConfig();
 
@@ -37,7 +37,7 @@ describe('vector engine/config selection coverage', () => {
     expect(activeVectorEngine(cfg)).toBe('qdrant');
 
     cfg.collections = {};
-    expect(activeVectorEngine(cfg)).toBe('lancedb');
+    expect(activeVectorEngine(cfg)).toBe('sqlite-vec');
   });
 
   test('applyVectorConfigUpdate switches qdrant without per-collection dataPath leakage', async () => {
@@ -97,7 +97,7 @@ describe('vector engine/config selection coverage', () => {
         qdrantApiKey: 'secret-key',
       });
       expect(getVectorStoreConfigByModel('missing-model')).toMatchObject({
-        type: 'lancedb',
+        type: 'sqlite-vec',
         collectionName: 'oracle_knowledge_bge_m3',
         embeddingModel: 'bge-m3',
       });

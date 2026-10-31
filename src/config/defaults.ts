@@ -1,4 +1,4 @@
-export const DEFAULT_SAFE_VECTOR_ENGINE = 'lancedb' as const;
+export const DEFAULT_SAFE_VECTOR_ENGINE = 'sqlite-vec' as const;
 export const DEFAULT_VECTOR_LOCAL_ENGINES = ['sqlite-vec', 'lancedb', 'qdrant'] as const;
 export const DEFAULT_VECTOR_COLLECTION = {
   key: 'bge-m3',
@@ -41,7 +41,7 @@ export function detectDefaultVectorBackend(input: {
   if (input.hasExistingIndex && configuredEngine) {
     return resolution(configuredEngine, 'detect', true, 'Existing vector index was detected; keeping the current backend.');
   }
-  return resolution(DEFAULT_SAFE_VECTOR_ENGINE, 'first-run-default', false, 'Fresh installs use LanceDB without a provider prompt.');
+  return resolution(DEFAULT_SAFE_VECTOR_ENGINE, 'first-run-default', false, 'Unconfigured installs retain sqlite-vec; select LanceDB explicitly.');
 }
 
 function normalizeLocalEngine(value: string | undefined): string | null {

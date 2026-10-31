@@ -1,4 +1,5 @@
 import { VECTORS_DB_PATH, LANCEDB_DIR, CHROMADB_DIR } from '../config.ts';
+import { DEFAULT_SAFE_VECTOR_ENGINE } from '../config/defaults.ts';
 import { COLLECTION_NAME } from '../const.ts';
 import type { VectorStoreAdapter } from './adapter.ts';
 import type { EmbedderConfig, VectorDBType, EmbeddingProviderType, EmbeddingProvider } from './types.ts';
@@ -63,7 +64,7 @@ function createConfiguredEmbedder(config: VectorStoreConfig) {
   return observe(createEmbeddingProvider(provider, model, options));
 }
 export function createVectorStore(config: VectorStoreConfig = {}): VectorStoreAdapter {
-  const type = (clean(config.type) || clean(process.env.ORACLE_VECTOR_DB) || 'lancedb').toLowerCase() as VectorDBType;
+  const type = (clean(config.type) || clean(process.env.ORACLE_VECTOR_DB) || DEFAULT_SAFE_VECTOR_ENGINE).toLowerCase() as VectorDBType;
   const collectionName = clean(config.collectionName) || COLLECTION_NAME;
   switch (type) {
     case 'sqlite-vec': {
@@ -165,7 +166,7 @@ export function createVectorStoreForModel(preset: EmbeddingModelConfig): VectorS
 }
 function vectorStoreConfigFromPreset(preset: EmbeddingModelConfig): VectorStoreConfig {
   return {
-    type: preset.adapter || 'lancedb',
+    type: preset.adapter || clean(process.env.ORACLE_VECTOR_DB) as VectorDBType || DEFAULT_SAFE_VECTOR_ENGINE,
     collectionName: preset.collection,
     embeddingProvider: resolveEmbeddingProviderType(
       (preset.provider as EmbeddingProviderType | undefined) ?? preset.embedder?.backend,

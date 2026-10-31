@@ -1,6 +1,6 @@
 import { inArray } from 'drizzle-orm';
 import { asOracleDb, type OracleDbInput } from '../db/drizzle-input.ts';
-import { oracleDocuments, oracleFts } from '../db/schema.ts';
+import { oracleDocuments, oracleFtsContent } from '../db/schema.ts';
 import type { VectorDocument } from '../vector/types.ts';
 import { isVectorEligible, vectorEligibilityConfig, type VectorEligibilityConfig } from './vector-eligibility.ts';
 
@@ -17,11 +17,15 @@ export function readVectorDocuments(
       .where(inArray(oracleDocuments.id, ids.slice(i, i + 500))).all());
   } else rows.push(...db.select().from(oracleDocuments).all());
   const content = new Map<string, string>();
-  const wanted = new Set(rows.map((row) => row.id));
-  // FTS5 id is UNINDEXED. Scan it once per batch, rather than once per job.
-  for (const row of db.select({ id: oracleFts.id, content: oracleFts.content }).from(oracleFts).all()) {
-    if (row.id === null || row.content === null || !wanted.has(row.id)) continue;
-    content.set(row.id, content.has(row.id) ? `${content.get(row.id)}\n${row.content}` : row.content);
+  const wanted = rows.map((row) => row.id);
+  for (let i = 0; i < wanted.length; i += 500) {
+    const matches = db.select({ id: oracleFtsContent.docId, content: oracleFtsContent.content })
+      .from(oracleFtsContent)
+      .where(inArray(oracleFtsContent.docId, wanted.slice(i, i + 500))).all();
+    for (const row of matches) {
+      if (row.id === null || row.content === null) continue;
+      content.set(row.id, content.has(row.id) ? `${content.get(row.id)}\n${row.content}` : row.content);
+    }
   }
   const states = new Map<string, VectorDocumentState>();
   for (const row of rows) {

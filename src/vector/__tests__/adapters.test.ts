@@ -30,10 +30,10 @@ describe('EmbeddingProvider', () => {
 // ============================================================================
 
 describe('createVectorStore factory', () => {
-  test('defaults to lancedb', () => {
+  test('defaults to sqlite-vec', () => {
     const store = createVectorStore();
-    expect(store.name).toBe('lancedb');
-    expect(store).toBeInstanceOf(LanceDBAdapter);
+    expect(store.name).toBe('sqlite-vec');
+    expect(store).toBeInstanceOf(SqliteVecAdapter);
   });
 
   test('creates sqlite-vec', () => {

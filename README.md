@@ -192,3 +192,8 @@ Arra Oracle V3 is licensed under BUSL-1.1. See [LICENSE](LICENSE).
 Inspired by [claude-mem](https://github.com/thedotmack/claude-mem) by Alex
 Newman — process manager patterns, worker service architecture, and hook system
 concepts.
+
+Vector storage defaults to `sqlite-vec` for compatibility with existing installs.
+To opt into LanceDB, set `ORACLE_VECTOR_DB=lancedb` or set collection `adapter` to
+`"lancedb"` and `dataPath` to a LanceDB directory in `vector-server.json`, then index that
+backend. See [vector runtime configuration](docs/vector-runtime.md).

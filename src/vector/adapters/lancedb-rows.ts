@@ -11,9 +11,9 @@ export function lanceRow(doc: VectorDocument, vector: number[]) {
   if (typeof date !== 'number' || !Number.isSafeInteger(date)) throw new Error('doc_date must be epoch milliseconds');
   return {
     id: doc.id, text: doc.document, metadata: JSON.stringify(meta), vector,
-    house: text('house'), source_kind: text('source_kind') || text('type'), source_file: text('source_file'),
+    house: text('house') || text('project'), source_kind: text('source_kind') || text('type'), source_file: text('source_file'),
     doc_date: date, tenant_id: text('tenant_id'), model_key: text('model_key'),
-    chunker_version: text('chunker_version'), type: text('type'), project: text('project'), metadata_version: 1,
+    chunker_version: text('chunker_version'), type: text('type'), project: text('project'), metadata_version: 2,
   };
 }
 

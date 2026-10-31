@@ -1,3 +1,4 @@
+import { VectorUnavailableError } from './vector-failures.ts';
 import type { OracleDbInput } from '../db/drizzle-input.ts';
 import { EmbeddingCache, CHUNKER_VERSION, type EmbeddingIdentity } from '../vector/embedding-cache.ts';
 import type { EmbeddingProvider, VectorStoreAdapter } from '../vector/types.ts';
@@ -19,8 +20,12 @@ export async function writeIncrementalVectors(deps: IncrementalVectorDeps, ids: 
   const states = readVectorDocuments(deps.db, ids);
   const snapshots = new Map([...states].map(([id, state]) => [id, JSON.stringify(state)]));
   const docs = [...states.values()].flatMap((state) => state.doc ? [state.doc] : []);
-  const identity = docs.length ? deps.identity ?? await deps.embedder.getIdentity?.() : undefined;
-  if (docs.length && !identity?.digest) throw new Error('Incremental indexing requires an immutable model digest');
+  let identity = deps.identity;
+  if (docs.length && !identity) {
+    try { identity = await deps.embedder.getIdentity?.(); }
+    catch (error) { throw new VectorUnavailableError(`Embedder identity unavailable: ${error}`); }
+  }
+  if (docs.length && !identity?.digest) throw new VectorUnavailableError('Incremental indexing requires an immutable model digest');
   const chunkerVersion = deps.chunkerVersion ?? CHUNKER_VERSION;
   for (const doc of docs) Object.assign(doc.metadata, {
     model_key: deps.modelKey, model_digest: identity!.digest, chunker_version: chunkerVersion,

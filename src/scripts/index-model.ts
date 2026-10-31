@@ -8,7 +8,7 @@ import { DB_PATH } from '../config.ts';
 import { formatIndexProgress, normalizeBatchSize } from './indexer-progress.ts';
 import { loadVectorIndexManifest, planVectorIndex, type VectorIndexPlan } from '../indexer/vector-index-manifest.ts';
 import { readVectorDocuments } from '../indexer/vector-documents.ts';
-import { writeIncrementalVectors } from '../indexer/incremental-vectors.ts';
+import { runQueuedVectorIndex } from '../indexer/queued-vector-index.ts';
 import { EmbeddingCache } from '../vector/embedding-cache.ts';
 import type { EmbeddingProvider } from '../vector/types.ts';
 import { ORACLE_DATA_DIR } from '../config.ts';
@@ -35,7 +35,7 @@ async function main() {
   console.log(`DB: ${DB_PATH}`);
   console.log(`Collection: ${preset.collection}`);
   console.log(`Model: ${preset.model}`);
-  console.log(`Adapter: ${preset.adapter || 'lancedb'}`);
+  console.log(`Adapter: ${preset.adapter || 'sqlite-vec'}`);
   console.log(`Batch size: ${BATCH_SIZE}`);
   console.log(`Mode: ${force ? 'force rebuild' : 'incremental'}${dryRun ? ' dry-run' : ''}`);
 
@@ -66,18 +66,14 @@ async function main() {
     // Include prior ids so deleted/superseded chunks become tombstones. Force rebuilds
     // still use cached embeddings and never drop the shared table.
     const ids = [...new Set([...docs.map((doc) => doc.id), ...previous.keys()])];
-    let embedded = 0;
-    let changed = 0;
-    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-      const written = await writeIncrementalVectors({ db, modelKey: selectedModelKey, store, embedder, cache },
-        ids.slice(i, i + BATCH_SIZE), force);
-      written.commit();
-      embedded += written.embedded;
-      changed += written.plan.changedDocs.length;
-      logProgress('Stored', Math.min(i + BATCH_SIZE, ids.length), ids.length, startTime);
-    }
-    plan.skipped = docs.length - changed;
-    printSummary(docs, plan, { embedded, errors: 0, startTime, dryRun, force });
+    let completed = 0;
+    const stats = await runQueuedVectorIndex(selectedModelKey, ids, {
+      db: sqlite, incremental: { store, embedder, cache, collection: preset.collection },
+      batchSize: BATCH_SIZE, force, pollIntervalMs: 1,
+      onEvent: (event) => { if (event.type === 'done') logProgress('Stored', ++completed, ids.length, startTime); },
+    });
+    printSummary(docs, plan, { embedded: null, errors: stats.errors, startTime, dryRun, force });
+    if (stats.errors) throw new Error(`${stats.errors} vector job(s) failed; inspect indexing_jobs`);
   } finally {
     await store.close();
     sqlite.close();
