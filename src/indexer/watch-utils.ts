@@ -42,7 +42,11 @@ export function listFiles(root: string, include: (filePath: string) => boolean):
   if (!entries) return files;
   for (const entry of entries) {
     const fullPath = path.join(root, entry.name);
-    if (entry.isDirectory()) files.push(...listFiles(fullPath, include));
+    if (entry.isDirectory()) {
+      // Same skip list as listDirs: vendored READMEs under node_modules are not knowledge.
+      if (entry.name === '.git' || entry.name === 'node_modules') continue;
+      files.push(...listFiles(fullPath, include));
+    }
     else if (entry.isFile() && include(fullPath)) files.push(fullPath);
   }
   return files;

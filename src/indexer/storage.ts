@@ -12,6 +12,7 @@ import { tenantIdForWrite } from '../middleware/tenant.ts';
 import { replaceEntityLinks } from '../search/entity-ranking.ts';
 import { chunkDocumentsForIndexing } from './chunker.ts';
 import { replaceDocumentPointersBatch, type PointerInput } from '../search/pointer-index.ts';
+import { ftsRowidsFor } from './fts-rowids.ts';
 import type { VectorStoreAdapter } from '../vector/types.ts';
 import type { OracleDocument } from '../types.ts';
 
@@ -42,16 +43,8 @@ export async function storeDocuments(
   const contents: string[] = [];
   const metadatas: any[] = [];
 
-  // FTS5 `id` is UNINDEXED, so `DELETE ... WHERE id = ?` scans the whole table: once per
-  // chunk that was ~0.13s × 131k chunks (hours). Map id → rowids in one pass, delete by rowid.
-  const wanted = new Set(storedDocuments.map((doc) => doc.id));
-  const ftsRowids = new Map<string, number[]>();
-  for (const row of sqlite.prepare('SELECT rowid, id FROM oracle_fts').all() as { rowid: number; id: string }[]) {
-    if (!wanted.has(row.id)) continue;
-    const list = ftsRowids.get(row.id);
-    if (list) list.push(row.rowid);
-    else ftsRowids.set(row.id, [row.rowid]);
-  }
+  // FTS5 `id` is UNINDEXED: look rowids up once via the indexed shadow table, delete by rowid.
+  const ftsRowids = ftsRowidsFor(sqlite, storedDocuments.map((doc) => doc.id));
   const deleteFtsRow = sqlite.prepare('DELETE FROM oracle_fts WHERE rowid = ?');
   const insertFtsRow = sqlite.prepare('INSERT INTO oracle_fts (id, content, concepts) VALUES (?, ?, ?)');
   const pointerInputs: PointerInput[] = [];
