@@ -31,18 +31,17 @@ import { collectPsiInbox } from './collect-inbox.ts';
 import { collectVaultExtraDocuments } from './collect-vault-extras.ts';
 import {
   changedDocumentIds,
-  enqueueVectorReindexJobs,
   snapshotActiveIndexerDocs,
   supersedeReplacedSourceDocs,
 } from './reindex-state.ts';
 import { oracleFts, storeDocuments } from './storage.ts';
 import { chunkDocumentsForIndexing } from './chunker.ts';
 import { removeDocumentPointers } from '../search/pointer-index.ts';
+import { safeEnqueueVectorJobs as enqueueEligibleVectorJobs } from './safe-vector-queue.ts';
 
 export interface IndexOptions {
   append?: boolean;
 }
-
 export class OracleIndexer {
   private sqlite: Database;
   private db: BunSQLiteDatabase<typeof schema>;
@@ -217,7 +216,7 @@ function tenantScopedWhere(base: SQL, tenantId: string | undefined): SQL {
 
 function safeEnqueueVectorJobs(db: BunSQLiteDatabase<typeof schema>, documents: OracleDocument[], changedIds: Set<string>) {
   try {
-    return enqueueVectorReindexJobs(db, documents, getEmbeddingModels(), changedIds);
+    return enqueueEligibleVectorJobs(db, documents, changedIds, getEmbeddingModels());
   } catch {
     return { queued: 0, skipped: 0, failed: documents.length };
   }
