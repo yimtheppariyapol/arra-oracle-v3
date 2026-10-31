@@ -70,18 +70,21 @@ function enqueueDocIds(
   return count;
 }
 
+// Look up by source_file only and filter the rest in JS. With all filters in SQL and no
+// sqlite_stat1, the planner chose idx_type (~50k 'learning' rows) over idx_source:
+// 23ms per file x 5.9k files = 138s of blocked event loop at every daemon start (2026-11-01).
 function existingLearningIds(db: WatcherDb, sourceFile: string): string[] {
   const tenantId = currentTenantId();
-  const filters: SQL[] = [
-    eq(oracleDocuments.sourceFile, sourceFile),
-    eq(oracleDocuments.type, 'learning'),
-    isNull(oracleDocuments.supersededAt),
-  ];
-  if (tenantId) filters.push(eq(oracleDocuments.tenantId, tenantId));
-  return db.select({ id: oracleDocuments.id })
+  return db.select({
+    id: oracleDocuments.id,
+    type: oracleDocuments.type,
+    supersededAt: oracleDocuments.supersededAt,
+    tenantId: oracleDocuments.tenantId,
+  })
     .from(oracleDocuments)
-    .where(and(...filters))
+    .where(eq(oracleDocuments.sourceFile, sourceFile))
     .all()
+    .filter((row) => row.type === 'learning' && row.supersededAt === null && (!tenantId || row.tenantId === tenantId))
     .map((row) => row.id);
 }
 
