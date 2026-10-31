@@ -23,6 +23,7 @@ export class OllamaEmbeddings implements EmbeddingProvider {
   private retryDelayMs: number;
   private batchSize: number;
   private timeoutMs: number;
+  private numThread: number | undefined;
   constructor(config: { baseUrl?: string; model?: string } = {}) {
     this.baseUrl = resolveOllamaBaseUrl(config.baseUrl, process.env.OLLAMA_BASE_URL, process.env.OLLAMA_HOST);
     this.model = config.model || 'nomic-embed-text';
@@ -30,6 +31,7 @@ export class OllamaEmbeddings implements EmbeddingProvider {
     this.retryDelayMs = positiveInt(process.env.ORACLE_EMBED_RETRY_DELAY_MS, 150);
     this.batchSize = positiveInt(process.env.ORACLE_EMBED_BATCH_SIZE, 50);
     this.timeoutMs = positiveInt(process.env.ORACLE_EMBED_TIMEOUT_MS, 30_000);
+    this.numThread = positiveInt(process.env.ORACLE_OLLAMA_NUM_THREAD, 0) || undefined;
     const KNOWN_DIMS: Record<string, number> = {
       'nomic-embed-text': 768,
       'qwen3-embedding': 1024,
@@ -92,7 +94,9 @@ export class OllamaEmbeddings implements EmbeddingProvider {
         const response = await fetch(`${this.baseUrl}/api/embed`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: this.model, input }),
+          // ORACLE_OLLAMA_NUM_THREAD caps CPU threads per request on a shared host (box Ollama used all
+          // 8 vCPUs, load1 8 -> 15.8, step-5 pilot 2026-11-01). Unset = Ollama's default.
+          body: JSON.stringify({ model: this.model, input, ...(this.numThread ? { options: { num_thread: this.numThread } } : {}) }),
           signal: controller.signal,
         });
         if (!response.ok) {

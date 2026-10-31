@@ -65,13 +65,18 @@ export function enqueueIndexJob(conn: JobsDb, opts: EnqueueOptions): EnqueuedJob
       ? [{ key: opts.modelKey, collection: opts.models[opts.modelKey].collection }]
       : []
     : Object.entries(opts.models).map(([key, { collection }]) => ({ key, collection }));
+  // Single choke point for every enqueue path (learn tool, file watcher, indexer). When the
+  // production model set is pinned, other registry models get no jobs: 70 stray nomic/qwen3 jobs
+  // appeared during the 2026-11-01 pilot from callers passing the full registry.
+  const pinned = process.env.ORACLE_VECTOR_MODELS?.split(',').map((m) => m.trim()).filter(Boolean);
+  const allowed = pinned?.length ? targets.filter((t) => pinned.includes(t.key)) : targets;
 
-  if (targets.length === 0) return [];
+  if (allowed.length === 0) return [];
 
   const db = asDrizzle(conn);
 
   const out: EnqueuedJob[] = [];
-  for (const { key, collection } of targets) {
+  for (const { key, collection } of allowed) {
     const id = jobId(key);
     db.insert(indexingJobs).values({
       id,
