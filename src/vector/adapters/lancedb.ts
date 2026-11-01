@@ -5,6 +5,7 @@ import { ensureLanceMetadata, lanceFilter } from './lancedb-metadata.ts';
 import { validateVector } from '../embedding-cache.ts';
 import { documentVectors } from '../document-vectors.ts';
 import { buildLanceRows, lanceRow } from './lancedb-rows.ts';
+import { LanceMaintenance, deletePredicates } from './lancedb-maintenance.ts';
 
 export class LanceDBAdapter implements VectorStoreAdapter {
   readonly name = 'lancedb';
@@ -13,6 +14,7 @@ export class LanceDBAdapter implements VectorStoreAdapter {
   private dbPath: string;
   private collectionName: string;
   private embedder: EmbeddingProvider;
+  private maintenance = new LanceMaintenance();
 
   constructor(collectionName: string, dbPath: string, embedder: EmbeddingProvider) {
     this.collectionName = collectionName;
@@ -97,8 +99,9 @@ export class LanceDBAdapter implements VectorStoreAdapter {
     if (ids.length === 0) return;
     if (!this.table) await this.ensureCollection();
     await this.checkoutLatest();
-    for (const id of ids) await this.table.delete(`id = '${id.replaceAll("'", "''")}'`);
+    for (const predicate of deletePredicates(ids)) await this.table.delete(predicate);
     console.error(`[LanceDB] Deleted ${ids.length} documents`);
+    await this.maintenance.afterWrite(this.table);
   }
 
   async addDocuments(docs: VectorDocument[]): Promise<void> {
@@ -132,6 +135,7 @@ export class LanceDBAdapter implements VectorStoreAdapter {
       .whenNotMatchedInsertAll()
       .execute(rows);
     console.error(`[LanceDB] Upserted ${docs.length} documents with precomputed vectors`);
+    await this.maintenance.afterWrite(this.table);
   }
 
   async replaceDocuments(docs: VectorDocument[]): Promise<void> {
