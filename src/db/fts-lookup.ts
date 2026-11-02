@@ -75,3 +75,10 @@ export function deleteFtsById(sqlite: Database, ids: string | Iterable<string>):
     for (const chunks of rowids.values()) for (const rowid of chunks) remove.run(rowid);
   })();
 }
+
+/** FTS5 COUNT(*) walks every row; oracle_fts_docsize keeps one small row per FTS row (2.6 s → 0.03 s). */
+export function ftsRowCount(sqlite: Database): number {
+  const docsize = Boolean(sqlite.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oracle_fts_docsize'").get());
+  const table = docsize ? 'oracle_fts_docsize' : 'oracle_fts';
+  return (sqlite.query(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count;
+}

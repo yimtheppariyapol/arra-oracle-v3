@@ -3,7 +3,7 @@
  *
  * Knowledge base statistics and health status.
  */
-import { ftsJoin } from '../db/fts-lookup.ts';
+import { ftsJoin, ftsRowCount } from '../db/fts-lookup.ts';
 
 import { sql, and, eq, ne, isNotNull } from 'drizzle-orm';
 import { oracleDocuments } from '../db/schema.ts';
@@ -43,7 +43,7 @@ export async function handleStats(ctx: ToolContext, _input: OracleStatsInput): P
         FROM oracle_documents d JOIN ${ftsJoin(ctx.sqlite)}
         WHERE d.tenant_id = ?
       `).get(tenantId) as { count: number }
-    : ctx.sqlite.prepare('SELECT COUNT(*) as count FROM oracle_fts').get() as { count: number };
+    : { count: ftsRowCount(ctx.sqlite) };
 
   const lastIndexedQuery = ctx.db.select({
     lastIndexed: sql<number | null>`MAX(indexed_at)`,

@@ -205,11 +205,11 @@ function readSourceDocumentStats(): { docs?: number; lastIndexed?: string } {
     const tenantId = currentTenantId();
     const row = tenantId
       ? db.query<{ docs: number; lastIndexed: string | null }, [string]>(`
-          SELECT COUNT(DISTINCT id) AS docs, MAX(indexed_at) AS lastIndexed
+          SELECT COUNT(*) AS docs, MAX(indexed_at) AS lastIndexed
           FROM oracle_documents WHERE tenant_id = ?
         `).get(tenantId)
       : db.query<{ docs: number; lastIndexed: string | null }, []>(`
-          SELECT COUNT(DISTINCT id) AS docs, MAX(indexed_at) AS lastIndexed
+          SELECT COUNT(*) AS docs, MAX(indexed_at) AS lastIndexed
           FROM oracle_documents
         `).get();
     return {

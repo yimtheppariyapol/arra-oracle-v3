@@ -112,7 +112,7 @@ function rootCounts(): { documents: number | null; ftsIndexed: number | null; in
   })();
   return {
     documents: one('SELECT COUNT(*) AS c FROM oracle_documents'),
-    ftsIndexed: one('SELECT COUNT(*) AS c FROM oracle_fts'),
+    ftsIndexed: one('SELECT COUNT(*) AS c FROM oracle_fts_docsize'), // FTS5 COUNT(*) walks every row
     indexing,
   };
 }

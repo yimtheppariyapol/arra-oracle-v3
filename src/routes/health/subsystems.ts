@@ -6,6 +6,7 @@ import { cachedEntityCoverageStats, type EntityCoverageStats } from '../../searc
 import type { VectorBackendHealth } from '../../vector/health.ts';
 import type { VectorRuntimeStatus } from '../../vector/runtime-status.ts';
 import type { VectorServerHealth } from './vector-server.ts';
+import { ftsRowCount } from '../../db/fts-lookup.ts';
 
 type DbStatus = { status: 'connected' } | { status: 'error'; error: string };
 type CanonicalSubsystemName = 'backend' | 'database' | 'fts' | 'vector' | 'embedder' | 'entities' | 'mcp' | 'plugins';
@@ -105,7 +106,7 @@ function ftsSubsystem(dbStatus: DbStatus): HealthSubsystem {
   if (dbStatus.status !== 'connected') return down('FTS healthy', 'database is unavailable');
   try {
     const docs = count('oracle_documents');
-    const indexed = count('oracle_fts');
+    const indexed = ftsRowCount(sqlite);
     const missing = Math.max(0, docs - indexed);
     const status = docs > 0 && indexed === 0 ? 'degraded' : 'healthy';
     return {

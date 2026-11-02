@@ -1,4 +1,4 @@
-import { ftsJoin } from '../../db/fts-lookup.ts';
+import { ftsJoin, ftsRowCount } from '../../db/fts-lookup.ts';
 import { Elysia, t } from 'elysia';
 import { DB_PATH } from '../../config.ts';
 import { getSetting, isDbLockError, sqlite } from '../../db/index.ts';
@@ -51,7 +51,7 @@ function totalDocs(stats: Record<string, unknown>): number {
 function ftsIndexedCount(): number {
   const tenantId = currentTenantId();
   if (!tenantId) {
-    return (sqlite.prepare('SELECT COUNT(*) AS count FROM oracle_fts').get() as { count: number }).count;
+    return ftsRowCount(sqlite);
   }
   return (sqlite.prepare(`
     SELECT COUNT(*) AS count FROM oracle_documents d JOIN ${ftsJoin(sqlite)}
