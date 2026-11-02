@@ -2,7 +2,7 @@ import { DB_PATH } from '../../config.ts';
 import { sqlite } from '../../db/index.ts';
 import { getEmbedderRuntimeStatus, resolveEmbeddingProviderSelection, type EmbedderRuntimeStatus, type EmbeddingProviderSelection } from '../../vector/embedder-config.ts';
 import { getDetectedEmbeddingProviders, type DetectedEmbeddingProvider } from '../../vector/provider-detection.ts';
-import { readEntityCoverageStats, type EntityCoverageStats } from '../../search/entity-coverage.ts';
+import { cachedEntityCoverageStats, type EntityCoverageStats } from '../../search/entity-coverage.ts';
 import type { VectorBackendHealth } from '../../vector/health.ts';
 import type { VectorRuntimeStatus } from '../../vector/runtime-status.ts';
 import type { VectorServerHealth } from './vector-server.ts';
@@ -51,7 +51,7 @@ export async function buildHealthSubsystems(input: {
     fts: ftsSubsystem(input.dbStatus),
     vector: vectorSubsystem(input.vector, input.vectorServer, input.vectorRuntime),
     embedder: await embedderSubsystem(input.embeddingProviders, input.vector, input.embeddingProviderSelection, input.embedderStatus),
-    entities: entityCoverageSubsystem(input.entityCoverage ?? readEntityCoverageStats()),
+    entities: entityCoverageSubsystem(input.entityCoverage ?? cachedEntityCoverageStats()),
     mcp: mcpSubsystem(input.toolCount),
     plugins: pluginSubsystem(input.pluginStatus, input.pluginCount),
   });

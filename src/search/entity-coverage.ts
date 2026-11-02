@@ -24,31 +24,42 @@ export function readEntityCoverageStats(
       return stats(0, 0, checkedAt, tenantId);
     }
     if (!tableExists(sqlite, 'oracle_entity_links')) {
-      const indexed = indexedCount(sqlite, tenantId);
+      const indexed = indexedCount(sqlite, ftsFilter(sqlite), tenantId);
       return { ...stats(indexed, 0, checkedAt, tenantId), error: 'oracle_entity_links missing' };
     }
-    return stats(indexedCount(sqlite, tenantId), linkedCount(sqlite, tenantId), checkedAt, tenantId);
+    const fts = ftsFilter(sqlite);
+    return stats(indexedCount(sqlite, fts, tenantId), linkedCount(sqlite, fts, tenantId), checkedAt, tenantId);
   } catch (error) {
     return { ...stats(0, 0, checkedAt, tenantId), error: message(error) };
   }
 }
 
-function indexedCount(sqlite: Database, tenantId?: string): number {
-  const where = tenantId ? 'WHERE d.tenant_id = ?' : '';
-  return count(sqlite, `
-    SELECT COUNT(DISTINCT d.id) AS count
-    FROM oracle_documents d JOIN oracle_fts f ON f.id = d.id
-    ${where}`, tenantId ? [tenantId] : []);
+// /api/health runs these on every request. `oracle_fts.id` is UNINDEXED, so joining on it read the whole
+// FTS table: 10 s per call on a 156k-doc vault (2026-11-02), blocking the event loop. The shadow table
+// oracle_fts_content carries the same id in c0 and schema.ts indexes it; fall back when the index is absent.
+function ftsFilter(sqlite: Database): string {
+  const indexed = sqlite.query<CountRow, []>(
+    "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'index' AND name = 'idx_fts_content_doc_id'",
+  ).get()?.count;
+  return indexed
+    ? 'EXISTS (SELECT 1 FROM oracle_fts_content f WHERE f.c0 = d.id)'
+    : 'd.id IN (SELECT id FROM oracle_fts)';
 }
 
-function linkedCount(sqlite: Database, tenantId?: string): number {
-  const where = tenantId ? 'WHERE d.tenant_id = ?' : '';
+function indexedCount(sqlite: Database, fts: string, tenantId?: string): number {
   return count(sqlite, `
-    SELECT COUNT(DISTINCT d.id) AS count
-    FROM oracle_documents d
-    JOIN oracle_fts f ON f.id = d.id
-    JOIN oracle_entity_links l ON l.document_id = d.id AND l.tenant_id = d.tenant_id
-    ${where}`, tenantId ? [tenantId] : []);
+    SELECT COUNT(*) AS count FROM oracle_documents d
+    WHERE ${tenantId ? 'd.tenant_id = ? AND ' : ''}${fts}`, tenantId ? [tenantId] : []);
+}
+
+// Driven from documents with EXISTS probes: joining the 1.5M-row link table and de-duplicating took
+// 4.8 s on the same vault; one indexed probe per document does not grow with links per document.
+function linkedCount(sqlite: Database, fts: string, tenantId?: string): number {
+  return count(sqlite, `
+    SELECT COUNT(*) AS count FROM oracle_documents d
+    WHERE ${tenantId ? 'd.tenant_id = ? AND ' : ''}${fts}
+      AND EXISTS (SELECT 1 FROM oracle_entity_links l WHERE l.document_id = d.id AND l.tenant_id = d.tenant_id)`,
+  tenantId ? [tenantId] : []);
 }
 
 function stats(indexed: number, linked: number, checkedAt: string, tenantId?: string): EntityCoverageStats {
@@ -73,6 +84,19 @@ function tableExists(sqlite: Database, name: string): boolean {
   return Boolean(sqlite.query<CountRow, [string]>(
     "SELECT COUNT(*) AS count FROM sqlite_master WHERE name = ? LIMIT 1",
   ).get(name)?.count);
+}
+
+// /api/health reads coverage on every request (the watchdog polls it every 5 min). Coverage moves slowly,
+// and even the indexed form is disk-bound (3.5 s) when the page cache is cold under memory pressure.
+const COVERAGE_TTL_MS = 10 * 60_000;
+const coverageCache = new Map<string, { at: number; value: EntityCoverageStats }>();
+export function cachedEntityCoverageStats(tenantId = currentTenantId(), now = Date.now()): EntityCoverageStats {
+  const key = tenantId ?? '';
+  const hit = coverageCache.get(key);
+  if (hit && now - hit.at < COVERAGE_TTL_MS && !hit.value.error) return hit.value;
+  const value = readEntityCoverageStats(defaultSqlite, tenantId);
+  coverageCache.set(key, { at: now, value });
+  return value;
 }
 
 function round(value: number): number { return Number(value.toFixed(4)); }

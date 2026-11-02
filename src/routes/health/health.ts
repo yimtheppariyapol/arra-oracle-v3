@@ -15,7 +15,7 @@ import { healthRollupStatus } from './rollup.ts';
 import { buildHealthSubsystems, drainingSubsystems, rollupHealthStatus, type EmbeddingProviderProbe, type EmbeddingProviderSelection } from './subsystems.ts';
 import { sleepConsolidationStatus } from '../../workers/sleep-consolidation.ts';
 import { entityBackfillStatus } from '../../workers/entity-backfill.ts';
-import { readEntityCoverageStats, type EntityCoverageStats } from '../../search/entity-coverage.ts';
+import { cachedEntityCoverageStats, type EntityCoverageStats } from '../../search/entity-coverage.ts';
 import pkg from '../../../package.json' with { type: 'json' };
 
 type VectorHealth = Awaited<ReturnType<typeof readVectorBackendHealth>>;
@@ -142,7 +142,7 @@ export function createHealthEndpoint(options: HealthEndpointOptions = {}) {
     const serviceUptime = Math.round(uptimeSeconds * 1000) / 1000;
     const vectorIsAvailable = embedderStatus.status === 'degraded' ? false : vectorAvailable(vectorRuntime, vector, vectorServer);
     const vectorStatus = vector.status === 'down' ? 'down' : embedderStatus.status === 'degraded' ? 'degraded' : vector.status;
-    const entityCoverage = options.entityCoverage?.() ?? readEntityCoverageStats();
+    const entityCoverage = options.entityCoverage?.() ?? cachedEntityCoverageStats();
     const subsystems = await buildHealthSubsystems({
       dbStatus, vector, vectorServer, vectorRuntime, pluginStatus, pluginCount,
       toolCount, uptimeSeconds: serviceUptime, embeddingProviders: options.embeddingProviders,
