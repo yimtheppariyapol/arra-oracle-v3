@@ -6,41 +6,28 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { violations } from './fts-scan-inspection.ts';
 
 const root = join(import.meta.dir, '../..');
-
-function violations(source: string): number[] {
-  // Mask comments while keeping offsets/newlines, so diagnostics name the original line.
-  const code = source.replace(/\/\*[\s\S]*?\*\/|^\s*\/\/[^\n]*/gm,
-    (comment) => comment.replace(/[^\n]/g, ' '));
-  const lines = new Set<number>();
-  const flag = (offset: number) => lines.add(code.slice(0, offset).split('\n').length);
-  // Inspect SQL literals separately: a MATCH in another statement cannot exempt a lookup.
-  for (const literal of code.matchAll(/`(?:\\[\s\S]|[^`])*`|'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"/g)) {
-    const sql = literal[0];
-    if (/\boracle_fts\s+MATCH\b/i.test(sql)) continue;
-    for (const counted of sql.matchAll(/\bCOUNT\s*\([^)]*\)[\s\S]*?\bFROM\s+oracle_fts\b(?!_)/gi)) flag(literal.index + counted.index);
-    for (const table of sql.matchAll(/\b(?:FROM|JOIN)\s+oracle_fts\b(?:\s+(?:AS\s+)?(?!WHERE\b|ON\b|JOIN\b)(\w+))?/gi)) {
-      const alias = table[1];
-      const direct = /\b(?:FROM|DELETE\s+FROM)\s+oracle_fts\s+WHERE\s+id\b/i.test(sql);
-      const id = alias ? `(?:${alias}\\.id|oracle_fts\\.id)` : 'oracle_fts\\.id';
-      const join = new RegExp(`\\bON\\s+(?:${id}\\s*=|\\w+\\.id\\s*=\\s*${id}\\b)`, 'i');
-      const where = new RegExp(`\\bWHERE\\s+(?:${id}|id)\\s*(?:=|IN\\b)`, 'i');
-      if (direct || join.test(sql) || where.test(sql)) flag(literal.index + table.index);
-    }
-  }
-  // A table-name helper (`count('oracle_fts')`) builds the same COUNT(*) without a SQL literal.
-  for (const match of code.matchAll(/\bcount\(\s*['"`]oracle_fts['"`]\s*\)/g)) flag(match.index);
-  // Drizzle can express the same scan without a SQL literal.
-  for (const match of code.matchAll(/\b(?:eq|inArray)\(oracleFts\.id\s*,/g)) flag(match.index);
-  return [...lines].sort((a, b) => a - b);
-}
 
 test('source contains no non-MATCH FTS document-id scans', () => {
   const failures: string[] = [];
   for (const file of [...new Bun.Glob('**/*.ts').scanSync({ cwd: join(root, 'src') })].sort()) {
     if (file.includes('__tests__/') || file.endsWith('.test.ts') || file.startsWith('db/migrations/')) continue;
     for (const line of violations(readFileSync(join(root, 'src', file), 'utf8'))) failures.push(`src/${file}:${line}`);
+  }
+  expect(failures).toEqual([]);
+});
+
+test('new migrations contain no non-MATCH FTS document-id scans, including unjournaled files', () => {
+  const failures: string[] = [];
+  const directory = join(root, 'src/db/migrations');
+  for (const file of [...new Bun.Glob('*.sql').scanSync({ cwd: directory })].sort()) {
+    const prefix = file.match(/^(\d+)_/);
+    if (!prefix || Number(prefix[1]) <= 42) continue;
+    for (const line of violations(readFileSync(join(directory, file), 'utf8'), true)) {
+      failures.push(`src/db/migrations/${file}:${line}`);
+    }
   }
   expect(failures).toEqual([]);
 });
@@ -57,4 +44,38 @@ test('guard detects both join directions, direct reads/deletes, FTS row counts, 
   expect(violations('const q = `SELECT f.id FROM oracle_fts f JOIN docs d ON f.id = d.id WHERE oracle_fts MATCH ?`;')).toEqual([]);
   expect(violations("const n = count('oracle_fts');")).toEqual([1]);
   expect(violations('const q = `SELECT COUNT(*) AS c FROM oracle_fts_docsize`;')).toEqual([]);
+  expect(violations('const q = eq(oracleFts.id, id);')).toEqual([1]);
+  expect(violations('const q = inArray(oracleFts.id, ids);')).toEqual([1]);
+});
+
+test('SQL guard detects old triggers, aliases, multiline updates and preserves comment line offsets', () => {
+  const old = readFileSync(join(root, 'src/db/migrations/0032_schema_integrity_guards.sql'), 'utf8');
+  const bodies = old.split('--> statement-breakpoint').filter((sql) => /CREATE TRIGGER IF NOT EXISTS oracle_documents_fts_/.test(sql));
+  expect(bodies).toHaveLength(2);
+  for (const body of bodies) expect(violations(body, true)).toHaveLength(1);
+  for (const sql of [
+    'UPDATE oracle_fts SET concepts = NEW.concepts WHERE id = NEW.id',
+    'UPDATE oracle_fts AS f SET concepts=? WHERE f.id IN (?)',
+    'UPDATE\n oracle_fts\n SET concepts=?\n WHERE id=?',
+    'DELETE FROM oracle_fts AS f WHERE f.id=?',
+    'SELECT * FROM oracle_fts AS f WHERE ? = f.id',
+    'CREATE TRIGGER t AFTER UPDATE ON docs BEGIN UPDATE oracle_fts SET concepts=? WHERE id=NEW.id; END;',
+  ]) {
+    expect(violations(sql, true)).toHaveLength(1);
+    expect(violations(`const q = \`${sql}\`;`)).toHaveLength(1);
+  }
+  expect(violations('-- UPDATE oracle_fts SET concepts=? WHERE id=?;\n/* ignored\n DELETE FROM oracle_fts WHERE id=?; */\nUPDATE /* target */ oracle_fts SET concepts=? WHERE id=?;', true)).toEqual([4]);
+  expect(violations('const q = `-- ignored\nUPDATE oracle_fts SET concepts=? WHERE id=?`;')).toEqual([2]);
+  expect(violations('/* UPDATE oracle_fts SET concepts=? WHERE id=? */', true)).toEqual([]);
+  expect(violations('const q = `SELECT * FROM oracle_fts WHERE oracle_fts MATCH ?;\nUPDATE oracle_fts SET concepts=? WHERE id=?`;')).toEqual([2]);
+  expect(violations("SELECT * FROM oracle_fts WHERE content='oracle_fts MATCH ;';\nUPDATE oracle_fts SET concepts=? WHERE id=?;", true)).toEqual([2]);
+  expect(violations('-- oracle_fts MATCH ?\nDELETE FROM oracle_fts WHERE id=?;', true)).toEqual([2]);
+});
+
+test('rowid-IN-shadow trigger queries pass in SQL and TypeScript', () => {
+  for (const verb of ['DELETE FROM oracle_fts', 'UPDATE oracle_fts SET concepts=NEW.concepts']) {
+    const sql = `${verb} WHERE rowid IN (SELECT id FROM oracle_fts_content WHERE c0=NEW.id);`;
+    expect(violations(sql, true)).toEqual([]);
+    expect(violations(`const q = \`${sql}\`;`)).toEqual([]);
+  }
 });

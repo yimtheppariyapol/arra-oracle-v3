@@ -44,6 +44,7 @@
     {"idx": 39, "version": "6", "when": 1781703900000, "tag": "0039_vector_index_manifest", "breakpoints": true},
     {"idx": 40, "version": "6", "when": 1781704000000, "tag": "0040_oracle_findings", "breakpoints": true},
     {"idx": 41, "version": "6", "when": 1783717000000, "tag": "0041_fleet_log", "breakpoints": true},
-    {"idx": 42, "version": "6", "when": 1793400000000, "tag": "0042_fts_rowid_lookup", "breakpoints": true}
+    {"idx": 42, "version": "6", "when": 1793400000000, "tag": "0042_fts_rowid_lookup", "breakpoints": true},
+    {"idx":43,"version":"6","when":1793577600000,"tag":"0043_fts_sync_triggers","breakpoints":true}
   ]
 }
