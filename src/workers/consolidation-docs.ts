@@ -4,6 +4,7 @@
  * Split out of consolidation.ts so the SQL shape and the reason for it stay
  * together — and because the file was at the 250-line limit.
  */
+import { ftsContentByIds } from '../db/fts-lookup.ts';
 import type { Database } from 'bun:sqlite';
 
 export function objectExists(sqlite: Database, name: string): boolean {
@@ -30,14 +31,9 @@ export function docsSql(tenantId?: string): string {
     LIMIT ?`;
 }
 
-/** Content for one page of ids: ONE FTS scan, not one per row. */
+/** Content for one page of ids, preserving the last chunk per id. */
 export function contentForPage(sqlite: Database, ids: string[]): Map<string, string> {
   if (ids.length === 0 || !objectExists(sqlite, 'oracle_fts')) return new Map();
-  const placeholders = ids.map(() => '?').join(',');
-  const rows = sqlite
-    .query<{ id: string; content: string | null }, string[]>(
-      `SELECT id, content FROM oracle_fts WHERE id IN (${placeholders})`,
-    )
-    .all(...ids);
+  const rows = ftsContentByIds(sqlite, ids);
   return new Map(rows.map((row) => [row.id, row.content ?? '']));
 }

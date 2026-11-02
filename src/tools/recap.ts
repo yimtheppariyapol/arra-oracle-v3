@@ -1,3 +1,4 @@
+import { ftsJoin } from '../db/fts-lookup.ts';
 import { currentTenantId } from '../middleware/tenant.ts';
 import { MCP_SERVER_NAME } from '../const.ts';
 import type { ToolContext, ToolResponse, OracleRecapInput } from './types.ts';
@@ -58,7 +59,7 @@ function fetchRows(ctx: ToolContext, limit: number, tenantId: string | undefined
     SELECT d.id, d.type, d.source_file, d.concepts, d.updated_at, d.indexed_at,
       d.project, d.usage_count, d.last_accessed_at, f.content
     FROM oracle_documents d
-    LEFT JOIN oracle_fts f ON d.id = f.id
+    LEFT JOIN ${ftsJoin(ctx.sqlite)}
     WHERE d.superseded_by IS NULL ${tenantClause}
     ORDER BY d.usage_count DESC, COALESCE(d.last_accessed_at, d.updated_at) DESC
     LIMIT ?

@@ -1,3 +1,4 @@
+import { ftsContentById, deleteFtsById } from '../../db/fts-lookup.ts';
 import { Elysia, t } from 'elysia';
 import { and, eq } from 'drizzle-orm';
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
@@ -67,13 +68,10 @@ function writeLearningFile(sourceFile: string, content: string): boolean {
   return true;
 }
 function ftsContent(id: string): string | null {
-  return db.select({ content: oracleFts.content })
-    .from(oracleFts)
-    .where(eq(oracleFts.id, id))
-    .get()?.content ?? null;
+  return ftsContentById(sqlite, id)?.content ?? null;
 }
 function upsertFts(id: string, content: string, concepts: string[]): void {
-  db.delete(oracleFts).where(eq(oracleFts.id, id)).run();
+  deleteFtsById(sqlite, id);
   db.insert(oracleFts).values({ id, content, concepts: concepts.join(' ') }).run();
 }
 function nextIdentity(pattern: string, requestedId?: string, requestedSourceFile?: string) {
@@ -203,7 +201,7 @@ function softDeleteLearning(id: string) {
       ...(currentTenantId() ? [eq(oracleDocuments.tenantId, currentTenantId()!)] : [])))
     .returning()
     .get();
-  db.delete(oracleFts).where(eq(oracleFts.id, id)).run();
+  deleteFtsById(sqlite, id);
   // Empty content derives no pointers, so this clears them — the delete-path equivalent.
   replaceEntityLinks(sqlite, { documentId: id, tenantId: row.tenantId, content: '', concepts: [], now });
   replaceDocumentPointers(sqlite, { documentId: id, tenantId: row.tenantId, content: '', concepts: [], timestamp: now });

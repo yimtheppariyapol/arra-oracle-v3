@@ -1,3 +1,4 @@
+import { ftsJoin } from '../../db/fts-lookup.ts';
 import { Elysia, t } from 'elysia';
 import { DB_PATH } from '../../config.ts';
 import { getSetting, isDbLockError, sqlite } from '../../db/index.ts';
@@ -53,8 +54,7 @@ function ftsIndexedCount(): number {
     return (sqlite.prepare('SELECT COUNT(*) AS count FROM oracle_fts').get() as { count: number }).count;
   }
   return (sqlite.prepare(`
-    SELECT COUNT(*) AS count FROM oracle_fts f
-    JOIN oracle_documents d ON d.id = f.id
+    SELECT COUNT(*) AS count FROM oracle_documents d JOIN ${ftsJoin(sqlite)}
     WHERE d.tenant_id = ?
   `).get(tenantId) as { count: number }).count;
 }

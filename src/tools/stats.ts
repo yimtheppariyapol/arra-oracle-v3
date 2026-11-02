@@ -3,6 +3,7 @@
  *
  * Knowledge base statistics and health status.
  */
+import { ftsJoin } from '../db/fts-lookup.ts';
 
 import { sql, and, eq, ne, isNotNull } from 'drizzle-orm';
 import { oracleDocuments } from '../db/schema.ts';
@@ -39,8 +40,7 @@ export async function handleStats(ctx: ToolContext, _input: OracleStatsInput): P
   const ftsCount = tenantId
     ? ctx.sqlite.prepare(`
         SELECT COUNT(*) as count
-        FROM oracle_fts f
-        JOIN oracle_documents d ON f.id = d.id
+        FROM oracle_documents d JOIN ${ftsJoin(ctx.sqlite)}
         WHERE d.tenant_id = ?
       `).get(tenantId) as { count: number }
     : ctx.sqlite.prepare('SELECT COUNT(*) as count FROM oracle_fts').get() as { count: number };

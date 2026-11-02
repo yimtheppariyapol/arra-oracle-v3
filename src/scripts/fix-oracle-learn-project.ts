@@ -2,6 +2,7 @@
  * Fix missing project field for oracle_learn documents
  * Uses Drizzle ORM - not direct SQL!
  */
+import { ftsContentById } from '../db/fts-lookup.ts';
 
 import { db, sqlite } from '../db/index.ts';
 import { oracleDocuments } from '../db/schema.ts';
@@ -45,9 +46,7 @@ for (const doc of docs) {
 
     // Method 2: Try FTS content if file not found
     if (!project) {
-      const ftsResult = sqlite.prepare(
-        'SELECT content FROM oracle_fts WHERE id = ?'
-      ).get(doc.id) as { content: string } | undefined;
+      const ftsResult = ftsContentById(sqlite, doc.id);
 
       if (ftsResult?.content) {
         project = extractProjectFromSource(ftsResult.content);

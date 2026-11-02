@@ -1,3 +1,4 @@
+import { ftsJoin } from '../../db/fts-lookup.ts';
 import { sqlite } from '../../db/index.ts';
 import { currentTenantId } from '../../middleware/tenant.ts';
 import { BI_TEMPORAL_JOIN, BI_TEMPORAL_WHERE, biTemporalParams } from '../../search/bitemporal.ts';
@@ -103,7 +104,7 @@ export function handleTenantList(type = 'all', limit = 10, offset = 0, groupByFi
   const rows = sqlite.prepare(`
     SELECT d.id, d.type, d.source_file, d.concepts, d.project, ${indexedAt} as indexed_at, f.content${temporalSelect}
     FROM oracle_documents d
-    JOIN oracle_fts f ON d.id = f.id
+    JOIN ${ftsJoin(sqlite)}
     ${temporalJoin}
     WHERE 1=1 ${typeClause} AND d.tenant_id = ? ${temporalClause}
     ${groupSql}
@@ -143,7 +144,7 @@ export function handleTenantReflect(): Record<string, unknown> | null {
   const row = sqlite.prepare(`
     SELECT d.id, d.type, d.source_file, d.concepts, f.content
     FROM oracle_documents d
-    LEFT JOIN oracle_fts f ON d.id = f.id
+    LEFT JOIN ${ftsJoin(sqlite)}
     WHERE d.tenant_id = ? AND d.type IN ('principle', 'learning')
     LIMIT 1 OFFSET ?
   `).get(tenantId, randomOffset(total)) as ListRow | undefined;

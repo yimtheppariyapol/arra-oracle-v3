@@ -4,7 +4,7 @@
  * Add new patterns/learnings to the knowledge base.
  * Exports normalizeProject and extractProjectFromSource for testability.
  */
-
+import { deleteFtsById } from '../db/fts-lookup.ts';
 import path from 'path';
 import fs from 'fs';
 import { oracleDocuments } from '../db/schema.ts';
@@ -254,7 +254,7 @@ export async function handleLearn(ctx: ToolContext, input: OracleLearnInput): Pr
   }).run();
 
   // FTS5 has no unique constraint on id — delete-then-insert to be idempotent.
-  ctx.sqlite.prepare(`DELETE FROM oracle_fts WHERE id = ?`).run(id);
+  deleteFtsById(ctx.sqlite, id);
   ctx.sqlite.prepare(`
     INSERT INTO oracle_fts (id, content, concepts)
     VALUES (?, ?, ?)

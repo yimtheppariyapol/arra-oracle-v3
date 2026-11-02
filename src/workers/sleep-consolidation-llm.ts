@@ -1,3 +1,4 @@
+import { ftsJoin } from '../db/fts-lookup.ts';
 import type { Database } from 'bun:sqlite';
 import { envAskClient, type AskClient, type AskSource } from '../routes/ask/synthesis.ts';
 import { memoryConfidence } from '../routes/memory/confidence.ts';
@@ -108,7 +109,7 @@ function loadDocs(sqlite: Database, limit: number, now: number): Candidate[] {
   if (limit <= 0) return [];
   const hasFts = Boolean(sqlite.query<{ name: string }, [string]>('SELECT name FROM sqlite_master WHERE name = ? LIMIT 1').get('oracle_fts'));
   const content = hasFts ? "coalesce(f.content, '')" : "''";
-  const join = hasFts ? 'LEFT JOIN oracle_fts f ON f.id = d.id' : '';
+  const join = hasFts ? `LEFT JOIN ${ftsJoin(sqlite)}` : '';
   const rows = sqlite.query<RawDoc, [number]>(`
     SELECT d.id, d.tenant_id AS tenantId, d.type, d.source_file AS sourceFile, d.concepts,
       d.created_at AS createdAt, d.updated_at AS updatedAt, d.usage_count AS usageCount,

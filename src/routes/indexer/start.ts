@@ -1,3 +1,4 @@
+import { ftsJoin } from '../../db/fts-lookup.ts';
 import { Elysia, t } from 'elysia';
 import { createVectorStoreForModel, getEmbeddingModels } from '../../vector/factory.ts';
 import { createDatabase } from '../../db/index.ts';
@@ -122,7 +123,7 @@ export function createStartRoute(deps: StartRouteDeps = {}) {
         SELECT d.id, d.tenant_id, d.type, GROUP_CONCAT(f.content, '\n') as content,
           d.source_file, d.concepts, d.project, d.created_at
         FROM oracle_documents d
-        JOIN oracle_fts f ON d.id = f.id
+        JOIN ${ftsJoin(sqlite)}
         ${tenantWhere}
         GROUP BY d.id
         ORDER BY d.created_at DESC

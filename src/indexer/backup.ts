@@ -2,6 +2,7 @@
  * Database backup before destructive operations
  * Philosophy: "Nothing is Deleted" - always preserve data
  */
+import { ftsJoin } from '../db/fts-lookup.ts';
 
 import fs from 'fs';
 import path from 'path';
@@ -162,7 +163,7 @@ function backupDatabaseUnsafe(sqlite: Database, config: IndexerConfig): void {
     docs = sqlite.prepare(`
       SELECT d.id, d.type, d.source_file, d.concepts, d.project, f.content
       FROM oracle_documents d
-      JOIN oracle_fts f ON d.id = f.id
+      JOIN ${ftsJoin(sqlite)}
       ${tenantWhere}
     `).all(...(tenantId ? [tenantId] : [])) as any[];
   } catch (e) {

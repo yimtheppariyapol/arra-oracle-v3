@@ -4,6 +4,7 @@
  * Read full document content by file path or document ID.
  * Resolves vault paths, ghq paths, and symlinks server-side.
  */
+import { ftsContentById } from '../db/fts-lookup.ts';
 
 import fs from 'fs';
 import path from 'path';
@@ -209,9 +210,7 @@ export async function handleRead(ctx: ToolContext, input: OracleReadInput): Prom
 
   // Fallback: try FTS indexed content (if we have an id)
   if (id) {
-    const ftsRow = ctx.sqlite.prepare(
-      'SELECT content FROM oracle_fts WHERE id = ?'
-    ).get(id) as { content: string } | null;
+    const ftsRow = ftsContentById(ctx.sqlite, id);
 
     if (ftsRow) {
       return {

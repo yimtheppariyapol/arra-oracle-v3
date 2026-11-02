@@ -1,3 +1,4 @@
+import { ftsJoin } from '../../db/fts-lookup.ts';
 import { sqlite } from '../../db/index.ts';
 import { currentTenantId } from '../../middleware/tenant.ts';
 
@@ -59,13 +60,13 @@ function dbRows(tenantId?: string | null) {
   const total = (sqlite.prepare(`
     SELECT COUNT(*) as total
     FROM oracle_documents d
-    JOIN oracle_fts f ON f.id = d.id
+    JOIN ${ftsJoin(sqlite)}
     ${where}
   `).get(...params) as { total: number } | undefined)?.total ?? 0;
   const rows = sqlite.prepare(`
     SELECT d.id, d.type, d.source_file, d.concepts, d.project, d.created_at
     FROM oracle_documents d
-    JOIN oracle_fts f ON f.id = d.id
+    JOIN ${ftsJoin(sqlite)}
     ${where}
     ORDER BY d.indexed_at DESC, d.id ASC
     LIMIT ?

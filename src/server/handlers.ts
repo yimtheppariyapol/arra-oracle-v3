@@ -4,6 +4,7 @@
  * Partially migrated to Drizzle ORM. FTS5 operations remain as raw SQL
  * since Drizzle doesn't support virtual tables.
  */
+import { deleteFtsById, ftsContentById, ftsJoin } from '../db/fts-lookup.ts';
 
 import fs from 'fs';
 import path from 'path';
@@ -366,9 +367,7 @@ export function handleReflect() {
     }
 
     // Get content from FTS (must use raw SQL)
-    const content = sqlite.prepare(`
-      SELECT content FROM oracle_fts WHERE id = ?
-    `).get(randomDoc.id) as { content: string } | undefined;
+    const content = ftsContentById(sqlite, randomDoc.id);
 
     if (!content) {
       return { error: 'Document content not found in FTS index' };
@@ -421,7 +420,7 @@ export function handleList(type: string = 'all', limit: number = 10, offset: num
       const stmt = sqlite.prepare(`
         SELECT d.id, d.type, d.source_file, d.concepts, d.project, MAX(d.indexed_at) as indexed_at, f.content
         FROM oracle_documents d
-        JOIN oracle_fts f ON d.id = f.id
+        JOIN ${ftsJoin(sqlite)}
         GROUP BY d.source_file
         ORDER BY indexed_at DESC
         LIMIT ? OFFSET ?
@@ -449,7 +448,7 @@ export function handleList(type: string = 'all', limit: number = 10, offset: num
       const stmt = sqlite.prepare(`
         SELECT d.id, d.type, d.source_file, d.concepts, d.project, MAX(d.indexed_at) as indexed_at, f.content
         FROM oracle_documents d
-        JOIN oracle_fts f ON d.id = f.id
+        JOIN ${ftsJoin(sqlite)}
         WHERE d.type = ?
         GROUP BY d.source_file
         ORDER BY indexed_at DESC
@@ -481,7 +480,7 @@ export function handleList(type: string = 'all', limit: number = 10, offset: num
     const stmt = sqlite.prepare(`
       SELECT d.id, d.type, d.source_file, d.concepts, d.project, d.indexed_at, f.content
       FROM oracle_documents d
-      JOIN oracle_fts f ON d.id = f.id
+      JOIN ${ftsJoin(sqlite)}
       ORDER BY d.indexed_at DESC
       LIMIT ? OFFSET ?
     `);
@@ -508,7 +507,7 @@ export function handleList(type: string = 'all', limit: number = 10, offset: num
     const stmt = sqlite.prepare(`
       SELECT d.id, d.type, d.source_file, d.concepts, d.project, d.indexed_at, f.content
       FROM oracle_documents d
-      JOIN oracle_fts f ON d.id = f.id
+      JOIN ${ftsJoin(sqlite)}
       WHERE d.type = ?
       ORDER BY d.indexed_at DESC
       LIMIT ? OFFSET ?
@@ -752,7 +751,7 @@ export function persistLearningDoc(opts: {
   }).run();
 
   // FTS5 has no unique constraint on id — delete-then-insert to be idempotent.
-  sqlite.prepare(`DELETE FROM oracle_fts WHERE id = ?`).run(id);
+  deleteFtsById(sqlite, id);
   sqlite.prepare(`
     INSERT INTO oracle_fts (id, content, concepts)
     VALUES (?, ?, ?)

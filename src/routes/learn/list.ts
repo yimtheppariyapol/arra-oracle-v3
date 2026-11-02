@@ -1,16 +1,10 @@
+import { ftsContentByIds } from '../../db/fts-lookup.ts';
 import { Elysia } from 'elysia';
-import { and, count, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm';
-import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import { db, oracleDocuments } from '../../db/index.ts';
+import { and, count, desc, eq, isNull, type SQL } from 'drizzle-orm';
+import { db, oracleDocuments, sqlite } from '../../db/index.ts';
 import { currentTenantId } from '../../middleware/tenant.ts';
 
 type LearnDoc = typeof oracleDocuments.$inferSelect;
-
-const oracleFts = sqliteTable('oracle_fts', {
-  id: text('id'),
-  content: text('content'),
-  concepts: text('concepts'),
-});
 
 function conceptsFrom(value: string): string[] {
   try {
@@ -82,25 +76,10 @@ function learnFilters(): SQL[] {
   return filters;
 }
 
-/**
- * Content for a page of ids, in ONE query.
- *
- * `oracle_fts` is an FTS5 virtual table whose `id` column is UNINDEXED, so any
- * lookup by id costs a full scan of the FTS content (~20ms here). The shape that
- * matters is therefore *how many scans*, not how many rows come back:
- *
- *   per-row `WHERE id = ?`   17,500 scans  ≈ 350s   (the original — a wedged server)
- *   LEFT JOIN on f.id = d.id  did not finish in 2 minutes even with LIMIT 50
- *   `WHERE id IN (…50 ids)`   ONE scan     ≈ 25ms   ← this
- *
- * Measured against the reference corpus (35,179 docs / 17,500 learnings).
- */
+/** Page content uses indexed document-id probes, with a batched fallback on foreign databases. */
 function contentByIds(ids: string[]): Map<string, string> {
   if (ids.length === 0) return new Map();
-  const rows = db.select({ id: oracleFts.id, content: oracleFts.content })
-    .from(oracleFts)
-    .where(inArray(oracleFts.id, ids))
-    .all();
+  const rows = ftsContentByIds(sqlite, ids);
   return new Map(rows.flatMap((row) => (row.id ? [[row.id, row.content ?? '']] as const : [])));
 }
 

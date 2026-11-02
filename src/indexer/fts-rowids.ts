@@ -1,7 +1,7 @@
 /**
  * fts-rowids.ts — map document ids to their oracle_fts rowids without scanning the FTS table.
  *
- * Why: fts5 `id` is UNINDEXED, so `DELETE FROM oracle_fts WHERE id = ?` and a full
+ * Why: fts5 `id` is UNINDEXED, so deletes filtered by document id and a full
  * `SELECT rowid, id FROM oracle_fts` both read the whole table. Per chunk that was ~0.13s on a
  * 131k-chunk vault (hours for a reindex), and per watcher-stored file it blocked the indexer
  * daemon on startup (2026-11-01, step-5 pilot). The shadow table `oracle_fts_content` shares the

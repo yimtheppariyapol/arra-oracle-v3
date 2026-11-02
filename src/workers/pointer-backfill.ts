@@ -27,6 +27,7 @@
  * the tenant per document, which is quadratic over a corpus this size. It stays exactly right
  * for the incremental write paths, which handle one document at a time.
  */
+import { ftsJoin } from '../db/fts-lookup.ts';
 import type { Database } from 'bun:sqlite';
 import { documentPointers } from '../search/pointer-index.ts';
 
@@ -96,7 +97,7 @@ function countRows(sqlite: Database, table: string): number {
 function countJoinable(sqlite: Database): number {
   try {
     const row = sqlite.prepare(
-      'SELECT COUNT(DISTINCT d.id) AS n FROM oracle_documents d JOIN oracle_fts f ON f.id = d.id',
+      `SELECT COUNT(DISTINCT d.id) AS n FROM oracle_documents d JOIN ${ftsJoin(sqlite)}`,
     ).get() as { n?: number } | undefined;
     return Number(row?.n ?? 0);
   } catch {
@@ -108,11 +109,11 @@ function countJoinable(sqlite: Database): number {
  * One pass, no GROUP BY. A document with several FTS chunks yields several rows; they arrive
  * together because the join is on id, and are concatenated as they stream.
  */
-const STREAM_SQL = `
+const streamSql = (sqlite: Database) => `
   SELECT d.id AS id, d.tenant_id AS tenantId, d.concepts AS concepts,
          d.updated_at AS updatedAt, f.content AS content
   FROM oracle_documents d
-  JOIN oracle_fts f ON f.id = d.id`;
+  JOIN ${ftsJoin(sqlite)}`;
 
 export function runPointerBackfill(
   sqlite: Database,
@@ -162,7 +163,7 @@ export function runPointerBackfill(
   };
 
   try {
-    for (const row of sqlite.prepare(STREAM_SQL).iterate() as Iterable<DocRow>) {
+    for (const row of sqlite.prepare(streamSql(sqlite)).iterate() as Iterable<DocRow>) {
       if (current && current.id !== row.id) {
         flushDocument();
         if (opts.limit !== undefined && scanned >= opts.limit) break;

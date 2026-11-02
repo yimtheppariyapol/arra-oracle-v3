@@ -1,3 +1,5 @@
+import { Database } from 'bun:sqlite';
+import { ftsJoin } from '../../db/fts-lookup.ts';
 import { isVectorEligible, vectorEligibilityConfig, vectorSourcePath } from '../../indexer/vector-eligibility.ts';
 
 export interface Chunk {
@@ -11,10 +13,14 @@ export interface Chunk {
 
 /** Only SELECT over the explicitly permitted mode=ro URI; no app DB imports. */
 export async function* snapshotRows(content = true): AsyncGenerator<Chunk> {
-  const uri = `file:${process.env.HOME}/.arra-oracle-v2/oracle.db?mode=ro`;
+  const dbPath = `${process.env.HOME}/.arra-oracle-v2/oracle.db`;
+  const uri = `file:${dbPath}?mode=ro`;
+  const sqlite = content ? new Database(dbPath, { readonly: true }) : null;
+  let join = '';
+  try { if (sqlite) join = `JOIN ${ftsJoin(sqlite)}`; } finally { sqlite?.close(); }
   const query = `SELECT json_object('id',d.id,'source_file',d.source_file,
     'created_by',d.created_by,'tenant_id',d.tenant_id,'content',${content ? 'f.content' : "''"})
-    FROM oracle_documents d ${content ? 'JOIN oracle_fts f ON f.id=d.id' : ''}
+    FROM oracle_documents d ${join}
     WHERE d.superseded_by IS NULL AND d.superseded_at IS NULL ORDER BY d.id${content ? ',f.rowid' : ''};`;
   const proc = Bun.spawn(['sqlite3', uri, query], { stdout: 'pipe', stderr: 'pipe' });
   const error = new Response(proc.stderr).text();

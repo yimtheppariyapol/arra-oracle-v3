@@ -1,8 +1,10 @@
+import { deleteFtsById } from '../db/fts-lookup.ts';
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
+import type { Database } from 'bun:sqlite';
 import { and, eq, inArray } from 'drizzle-orm';
-import { createDatabase, oracleDocuments, oracleFts, type DatabaseConnection } from '../db/index.ts';
+import { createDatabase, oracleDocuments, type DatabaseConnection } from '../db/index.ts';
 import type { OracleDocument } from '../types.ts';
 import { autoDeriveStructure, projectFromRoot } from './auto-derive.ts';
 import { chunkDocumentForIndexing } from './chunker.ts';
@@ -160,7 +162,7 @@ function deleteStaleMineRows(db: OracleDb, rows: ExistingMineRow[], keep: Set<st
     tx.delete(oracleDocuments)
       .where(and(inArray(oracleDocuments.id, ids), eq(oracleDocuments.createdBy, 'mine')))
       .run();
-    tx.delete(oracleFts).where(inArray(oracleFts.id, ids)).run();
+    deleteFtsById((db as OracleDb & { $client: Database }).$client, ids);
   });
 }
 

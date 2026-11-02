@@ -1,3 +1,4 @@
+import { ftsJoin } from '../db/fts-lookup.ts';
 import type { Database } from 'bun:sqlite';
 import { ensureVectorStoreConnected, getEmbeddingModels, type EmbeddingModelConfig } from '../vector/factory.ts';
 import { cosineDistanceToSimilarity } from '../vector/scoring.ts';
@@ -9,7 +10,6 @@ import type { ConsolidationPlan } from './consolidation.ts';
 import { queueConsolidationSuggestions, queuedConsolidationCount } from './consolidation-queue.ts';
 import { llmConsolidationEnabled, llmConsolidationStatus, runLlmConsolidationPass, type LlmConsolidationPassResult } from './sleep-consolidation-llm.ts';
 import { tokenizeForConsolidation } from './tokenize.ts';
-
 type QueryStore = Pick<VectorStoreAdapter, 'queryById'>;
 type Env = Record<string, string | undefined>;
 type Logger = Pick<Console, 'warn' | 'error'>;
@@ -171,7 +171,7 @@ function loadDocs(sqlite: Database, limit: number, now: number): Candidate[] {
   if (limit <= 0) return [];
   const hasFts = objectExists(sqlite, 'oracle_fts');
   const content = hasFts ? "coalesce(f.content, '')" : "''";
-  const join = hasFts ? 'LEFT JOIN oracle_fts f ON f.id = d.id' : '';
+  const join = hasFts ? `LEFT JOIN ${ftsJoin(sqlite)}` : '';
   const rows = sqlite.query<RawDoc, [number]>(`
     SELECT d.id, d.tenant_id AS tenantId, d.type, d.source_file AS sourceFile, d.concepts,
       d.created_at AS createdAt, d.updated_at AS updatedAt, d.usage_count AS usageCount,

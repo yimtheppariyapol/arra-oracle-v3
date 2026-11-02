@@ -1,3 +1,4 @@
+import { deleteFtsById } from '../../db/fts-lookup.ts';
 import fs from 'fs';
 import path from 'path';
 import { eq } from 'drizzle-orm';
@@ -101,7 +102,7 @@ export function persistSessionSummary(
     createdBy: 'session_summary',
   }).run();
 
-  sqlite.prepare('DELETE FROM oracle_fts WHERE id = ?').run(identity.id);
+  deleteFtsById(sqlite, identity.id);
   sqlite.prepare('INSERT INTO oracle_fts (id, content, concepts) VALUES (?, ?, ?)')
     .run(identity.id, content, concepts.join(' '));
   replaceEntityLinks(sqlite, { documentId: identity.id, tenantId, content, concepts, now: now.getTime() });

@@ -4,6 +4,8 @@
  * Split out of `pointer-index.ts` when that file reached the 250-line limit, and because the
  * cost model here is genuinely its own concern — see the note on `hydratePointerDocs`.
  */
+import { ftsContentByIds } from '../db/fts-lookup.ts';
+import type { Database } from 'bun:sqlite';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
@@ -77,13 +79,12 @@ export function hydratePointerDocs(db: OracleDb, ranked: Map<string, { score: nu
   }));
 }
 
-/** Content for the returned documents only — one FTS probe each, not one per candidate. */
+/** Indexed content probes for the returned documents only. */
 function fetchContent(db: OracleDb, ids: string[]): Map<string, string> {
   const out = new Map<string, string>();
   if (ids.length === 0) return out;
   try {
-    const rows = db.select({ id: oracleFts.id, content: oracleFts.content })
-      .from(oracleFts).where(inArray(oracleFts.id, ids)).all() as Array<{ id: string | null; content: string | null }>;
+    const rows = ftsContentByIds((db as OracleDb & { $client: Database }).$client, ids);
     for (const row of rows) if (row.id) out.set(row.id, row.content ?? '');
   } catch {
     // Content is presentational here; ranking already happened. A missing FTS row is not fatal.

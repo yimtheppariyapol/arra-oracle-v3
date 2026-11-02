@@ -1,3 +1,4 @@
+import { deleteFtsById } from '../db/fts-lookup.ts';
 import { afterAll, beforeAll } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
@@ -87,8 +88,7 @@ export function simulateSmartDeletion(project: string | null): string[] {
     .where(inArray(oracleDocuments.id, idsToDelete))
     .run();
 
-  const placeholders = idsToDelete.map(() => '?').join(',');
-  sqlite.prepare(`DELETE FROM oracle_fts WHERE id IN (${placeholders})`).run(...idsToDelete);
+  deleteFtsById(sqlite, idsToDelete);
   return idsToDelete;
 }
 

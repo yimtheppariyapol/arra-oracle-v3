@@ -9,6 +9,7 @@
  * to keep a single source of truth for the canonical LanceDB path + collection
  * (via the EMBEDDING_MODELS registry used by the server).
  */
+import { deleteFtsById } from '../db/fts-lookup.ts';
 
 import fs from 'fs';
 import path from 'path';
@@ -34,7 +35,7 @@ import {
   snapshotActiveIndexerDocs,
   supersedeReplacedSourceDocs,
 } from './reindex-state.ts';
-import { oracleFts, storeDocuments } from './storage.ts';
+import { storeDocuments } from './storage.ts';
 import { chunkDocumentsForIndexing } from './chunker.ts';
 import { removeDocumentPointers } from '../search/pointer-index.ts';
 import { safeEnqueueVectorJobs as enqueueEligibleVectorJobs } from './safe-vector-queue.ts';
@@ -182,7 +183,7 @@ export class OracleIndexer {
         const BATCH_SIZE = 500;
         for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
           const batch = idsToDelete.slice(i, i + BATCH_SIZE);
-          this.db.delete(oracleFts).where(inArray(oracleFts.id, batch)).run();
+          deleteFtsById(this.sqlite, batch);
           removeDocumentPointers(this.sqlite, tenantId, batch);
         }
       }

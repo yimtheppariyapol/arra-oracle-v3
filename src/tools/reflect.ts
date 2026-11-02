@@ -3,6 +3,7 @@
  *
  * Return random wisdom from the knowledge base.
  */
+import { ftsContentById } from '../db/fts-lookup.ts';
 
 import { and, eq, sql, inArray } from 'drizzle-orm';
 import { oracleDocuments } from '../db/schema.ts';
@@ -38,9 +39,7 @@ export async function handleReflect(ctx: ToolContext, _input: OracleReflectInput
     throw new Error('No documents found in Oracle knowledge base');
   }
 
-  const content = ctx.sqlite.prepare(`
-    SELECT content FROM oracle_fts WHERE id = ?
-  `).get(randomDoc.id) as { content: string } | undefined;
+  const content = ftsContentById(ctx.sqlite, randomDoc.id);
 
   if (!content) {
     throw new Error('Document content not found in FTS index');

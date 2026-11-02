@@ -1,3 +1,4 @@
+import { ftsContentById } from '../db/fts-lookup.ts';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
 import { oracleDocuments } from '../db/schema.ts';
@@ -35,14 +36,12 @@ describe('Indexer Preservation - FTS sync', () => {
       content: 'Searchable content for FTS test',
     });
 
-    const ftsBefore = sqlite.prepare('SELECT id FROM oracle_fts WHERE id = ?')
-      .get('fts-test-doc');
+    const ftsBefore = ftsContentById(sqlite, 'fts-test-doc');
     expect(ftsBefore).toBeDefined();
 
     simulateSmartDeletion('github.com/current/repo');
 
-    const ftsAfter = sqlite.prepare('SELECT id FROM oracle_fts WHERE id = ?')
-      .get('fts-test-doc');
+    const ftsAfter = ftsContentById(sqlite, 'fts-test-doc');
     expect(ftsAfter).toBeFalsy();
   });
 
@@ -58,8 +57,7 @@ describe('Indexer Preservation - FTS sync', () => {
 
     simulateSmartDeletion('github.com/current/repo');
 
-    const fts = sqlite.prepare('SELECT content FROM oracle_fts WHERE id = ?')
-      .get('fts-preserved-doc') as { content: string } | undefined;
+    const fts = ftsContentById(sqlite, 'fts-preserved-doc');
     expect(fts).toBeDefined();
     expect(fts?.content).toBe('This content should remain searchable');
   });
