@@ -185,6 +185,7 @@ function mcpSubsystem(toolCount: number): HealthSubsystem {
 }
 
 function entityCoverageSubsystem(stats: EntityCoverageStats): HealthSubsystem {
+  if (stats.pending) return healthy('entity sidecar coverage', 'entity coverage refresh pending', { ...stats });
   if (stats.error) return degraded('entity sidecar coverage', `entity coverage unavailable: ${stats.error}`, { ...stats });
   const percent = Number((stats.ratio * 100).toFixed(1));
   const detail = stats.docsIndexed === 0
