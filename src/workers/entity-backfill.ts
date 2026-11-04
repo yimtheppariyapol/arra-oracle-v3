@@ -1,4 +1,4 @@
-import { ftsJoin } from '../db/fts-lookup.ts';
+import { ftsJoin, ftsSource } from '../db/fts-lookup.ts';
 import type { Database } from 'bun:sqlite';
 import { currentTenantId } from '../middleware/tenant.ts';
 import { entityLinksForDocument, replaceEntityLinks } from '../search/entity-ranking.ts';
@@ -140,13 +140,17 @@ async function applyPlan(sqlite: Database, planned: Plan, input: EntityBackfillO
   return { docsRepaired: new Set([...planned.linkDocs.map((doc) => doc.id), ...planned.sidecars.flatMap((item) => item.docs.map((doc) => String(doc.metadata.source_doc_id)))]).size, linksWritten, entityDocsWritten, errors };
 }
 
+// Pick the newest `limit` documents that have FTS rows first, then concatenate only their chunks:
+// GROUP BY before LIMIT concatenated every chunk in the vault (~5 s on 156k docs, 2026-11-02).
 function loadDocs(sqlite: Database, limit: number, tenantId?: string): IndexedDoc[] {
-  const where = tenantId ? 'WHERE d.tenant_id = ?' : '';
+  const tenant = tenantId ? 'd.tenant_id = ? AND' : '';
   return sqlite.query<IndexedDoc, any[]>(`
     SELECT d.id, d.tenant_id AS tenantId, d.type, d.source_file AS sourceFile,
       d.concepts, d.project, GROUP_CONCAT(f.content, '\n') AS content
-    FROM oracle_documents d JOIN ${ftsJoin(sqlite)}
-    ${where} GROUP BY d.id ORDER BY d.indexed_at DESC LIMIT ?`).all(...(tenantId ? [tenantId, limit] : [limit]));
+    FROM (SELECT d.* FROM oracle_documents d
+      WHERE ${tenant} EXISTS (SELECT 1 FROM ${ftsSource(sqlite)} x WHERE x.id = d.id)
+      ORDER BY d.indexed_at DESC, d.id LIMIT ?) d
+    JOIN ${ftsJoin(sqlite)} GROUP BY d.id ORDER BY d.indexed_at DESC, d.id`).all(...(tenantId ? [tenantId, limit] : [limit]));
 }
 
 function existingLinkKeys(sqlite: Database, ids: string[], tenantId?: string): Map<string, Set<string>> {

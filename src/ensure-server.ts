@@ -20,6 +20,11 @@ import { PORT, ORACLE_DATA_DIR } from './config.ts';
 
 const HEALTH_URL = `http://localhost:${PORT}/api/health`;
 const SERVER_SCRIPT = path.join(import.meta.dirname || __dirname, 'server.ts');
+// The 156k-doc vault takes minutes to boot and /api/health answers in 4-11 s while it warms,
+// so the CLI's 15 s wait and 2 s probe logged "failed to become healthy" on every good start
+// (2026-11-02). Callers that can wait set these; library defaults stay short.
+const PROBE_MS = Number(process.env.ORACLE_ENSURE_PROBE_MS) || 2000;
+const CLI_TIMEOUT_MS = Number(process.env.ORACLE_ENSURE_TIMEOUT_MS) || 15000;
 
 // Configure process manager to use oracle data dir
 configure({ dataDir: ORACLE_DATA_DIR, pidFileName: 'oracle-http.pid' });
@@ -40,7 +45,7 @@ export interface EnsureServerOptions {
 async function isServerHealthy(): Promise<boolean> {
   try {
     const response = await fetch(HEALTH_URL, {
-      signal: AbortSignal.timeout(2000)
+      signal: AbortSignal.timeout(PROBE_MS)
     });
     if (response.ok) {
       const data = await response.json() as import('./server/types.js').HealthResponse;
@@ -194,7 +199,7 @@ if (import.meta.main) {
     process.exit(s.healthy ? 0 : 1);
   } else {
     // Ensure running
-    const success = await ensureServerRunning({ verbose: true, timeout: 15000 });
+    const success = await ensureServerRunning({ verbose: true, timeout: CLI_TIMEOUT_MS });
     process.exit(success ? 0 : 1);
   }
 }
